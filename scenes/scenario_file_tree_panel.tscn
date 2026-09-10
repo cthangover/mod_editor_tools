@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="src/ScenarioEditor/ScenarioFileTreePanel.cs" id="1_script"]
+
+[node name="ScenarioFileTreePanel" type="VBoxContainer" script=ExtResource("1_script")]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="FileTree" type="Tree" parent="."]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+hide_root = true

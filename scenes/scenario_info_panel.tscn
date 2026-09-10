@@ -1,0 +1,47 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="src/ScenarioEditor/ScenarioInfoPanel.cs" id="1_script"]
+
+[node name="ScenarioInfoPanel" type="VBoxContainer" script=ExtResource("1_script")]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 6
+
+[node name="Scroll" type="ScrollContainer" parent="."]
+size_flags_vertical = 3
+horizontal_scroll_mode = 3
+
+[node name="VBox" type="VBoxContainer" parent="Scroll"]
+theme_override_constants/separation = 8
+
+[node name="HintScene" type="Label" parent="Scroll/VBox"]
+
+[node name="InfoScene" type="Label" parent="Scroll/VBox"]
+text = "-"
+
+[node name="HintPriority" type="Label" parent="Scroll/VBox"]
+
+[node name="InfoPriority" type="Label" parent="Scroll/VBox"]
+text = "-"
+
+[node name="HintCondition" type="Label" parent="Scroll/VBox"]
+
+[node name="InfoCondition" type="Label" parent="Scroll/VBox"]
+text = "-"
+
+[node name="HSep" type="HSeparator" parent="Scroll/VBox"]
+
+[node name="HintSwitchTargets" type="Label" parent="Scroll/VBox"]
+
+[node name="InfoSwitchTargets" type="Label" parent="Scroll/VBox"]
+text = "-"
+
+[node name="HintLocaleKeys" type="Label" parent="Scroll/VBox"]
+
+[node name="InfoLocaleKeys" type="Label" parent="Scroll/VBox"]
+text = "-"
+
+[node name="HintQuestRefs" type="Label" parent="Scroll/VBox"]
+
+[node name="InfoQuestRefs" type="Label" parent="Scroll/VBox"]
+text = "-"

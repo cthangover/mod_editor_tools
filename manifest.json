@@ -1,0 +1,11 @@
+{
+  "id": "tools",
+  "name": "Tools",
+  "version": "1.0.0",
+  "author": "ct",
+  "description": "Development tools",
+  "sources": [
+    "src/**/*.cs"
+  ],
+  "depends": ["core>=1"]
+}
