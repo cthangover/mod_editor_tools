@@ -180,8 +180,8 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
         private void OnTextTabSelected(string text)
         {
-            _filePathLabel.Text = _editTabs.CurrentAbsolutePath != null
-                ? ScenarioFileService.GetRelativePath(_editTabs.CurrentAbsolutePath) : "";
+            _filePathLabel.Text = _editTabs.CurrentKey != null
+                ? ScenarioFileService.GetDisplayPath(_editTabs.CurrentModId, _editTabs.CurrentRelativePath) : "";
             _saveBtn.Disabled = false;
             _openFileBtn.Disabled = false;
             _playBtn.Disabled = false;
@@ -221,17 +221,23 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             if (!_editTabs.HasActiveFile)
                 return;
 
-            var path = _editTabs.CurrentAbsolutePath;
+            var modId = _editTabs.CurrentModId;
+            var relativePath = _editTabs.CurrentRelativePath;
             var text = _editTabs.CurrentText;
             try
             {
-                ScenarioFileService.WriteAllText(path, text);
+                if (!ScenarioFileService.WriteAllText(modId, relativePath, text))
+                {
+                    _statusLabel.Text = TranslationServer.Translate("tools/scenario_editor/readonly_zip");
+                    return;
+                }
+
                 _editTabs.SaveCurrentFile();
                 _statusLabel.Text = TranslationServer.Translate("tools/scenario_editor/status_saved");
                 _infoPanel.Update(text);
                 _thumbPanel.Load(text);
                 _editTabs.RefreshGraph();
-                GameLogger.Log("SCENARIO_EDITOR", $"Saved: {path}");
+                GameLogger.Log("SCENARIO_EDITOR", $"Saved: {modId}/{relativePath}");
             }
             catch (Exception ex)
             {
@@ -243,9 +249,15 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
         private void OnOpenFilePressed()
         {
-            var path = _editTabs.CurrentAbsolutePath;
-            if (path == null)
+            if (_editTabs.CurrentKey == null)
                 return;
+
+            var path = ScenarioFileService.GetAbsolutePath(_editTabs.CurrentModId, _editTabs.CurrentRelativePath);
+            if (string.IsNullOrEmpty(path))
+            {
+                _statusLabel.Text = TranslationServer.Translate("tools/scenario_editor/readonly_zip");
+                return;
+            }
 
             GD.Print($"[ScenarioEditor] Opening: {path}");
             var err = OS.ShellOpen(path);
@@ -267,10 +279,21 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                 return;
             }
 
-            var path = _editTabs.CurrentAbsolutePath;
+            var modId = _editTabs.CurrentModId;
+            var relativePath = _editTabs.CurrentRelativePath;
             try
             {
-                ScenarioFileService.WriteAllText(path, text);
+                if (ScenarioFileService.WriteAllText(modId, relativePath, text))
+                {
+                    _editTabs.SaveCurrentFile();
+                }
+                else
+                {
+                    _statusLabel.Text = TranslationServer.Translate("tools/scenario_editor/readonly_zip");
+                    GameLogger.Log("SCENARIO_EDITOR",
+                        $"Test play: '{modId}/{relativePath}' is read-only, playing from the editor buffer",
+                        LogLevel.Warning);
+                }
             }
             catch (Exception ex)
             {
@@ -278,8 +301,6 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                     TranslationServer.Translate("tools/scenario_editor/save_error"), ex.Message);
                 return;
             }
-
-            _editTabs.SaveCurrentFile();
 
             _editLayout.Visible = false;
             _playLayout.Visible = true;

@@ -55,7 +55,6 @@ namespace Cthangover.Tools.InteractiveEditor
 
 		public InteractiveEditorWindow() : base("tools/interactive_editor/title")
 		{
-			Title = "Interactive Editor";
 			Size = new Vector2I(1280, 820);
 
 			var outer = CreateFillContainer();

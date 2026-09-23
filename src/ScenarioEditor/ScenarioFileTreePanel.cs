@@ -8,8 +8,8 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
     public partial class ScenarioFileTreePanel : VBoxContainer
     {
         private Tree _fileTree;
-        private readonly Dictionary<string, string> _fileItemToPath = new();
-        private readonly Dictionary<string, TreeItem> _pathToTreeItem = new();
+        private readonly Dictionary<string, string> _fileItemToKey = new();
+        private readonly Dictionary<string, TreeItem> _keyToTreeItem = new();
         private bool _isProgrammaticSelection;
 
         public event Action<string> FileSelected;
@@ -25,7 +25,8 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
         private void Populate()
         {
             _fileTree.Clear();
-            _fileItemToPath.Clear();
+            _fileItemToKey.Clear();
+            _keyToTreeItem.Clear();
 
             var root = _fileTree.CreateItem();
             var mods = ScenarioFileService.ScanScenarioFiles();
@@ -56,8 +57,8 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                         var fileItem = _fileTree.CreateItem(parentItem);
                         fileItem.SetText(0, file.Name);
                         fileItem.SetMetadata(0, Variant.From("scenario"));
-                        _fileItemToPath[GetItemKey(fileItem)] = file.AbsolutePath;
-                        _pathToTreeItem[file.AbsolutePath] = fileItem;
+                        _fileItemToKey[GetItemKey(fileItem)] = file.Key;
+                        _keyToTreeItem[file.Key] = fileItem;
                     }
                 }
             }
@@ -68,16 +69,16 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             return item.GetInstanceId().ToString();
         }
 
-        public void SelectFile(string absolutePath)
+        public void SelectFile(string key)
         {
-            if (!_pathToTreeItem.TryGetValue(absolutePath, out var item))
+            if (!_keyToTreeItem.TryGetValue(key, out var item))
                 return;
 
             _isProgrammaticSelection = true;
             item.Select(0);
             _isProgrammaticSelection = false;
 
-            FileSelected?.Invoke(absolutePath);
+            FileSelected?.Invoke(key);
         }
 
         private void OnCellSelected()
@@ -93,11 +94,11 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             if (meta.VariantType != Variant.Type.String || meta.AsString() != "scenario")
                 return;
 
-            var key = GetItemKey(item);
-            if (!_fileItemToPath.TryGetValue(key, out var filePath))
+            var itemKey = GetItemKey(item);
+            if (!_fileItemToKey.TryGetValue(itemKey, out var fileKey))
                 return;
 
-            FileSelected?.Invoke(filePath);
+            FileSelected?.Invoke(fileKey);
         }
     }
 }

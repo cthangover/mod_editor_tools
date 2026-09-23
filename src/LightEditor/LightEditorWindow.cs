@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using Cthangover.Core.Factories.Impls;
 using Cthangover.Core.UI.Lights;
+using Cthangover.Core.Utils;
 using Cthangover.Tools.Services;
 using Godot;
 
@@ -366,8 +368,9 @@ namespace Cthangover.Core.UI.Tool.LightEditor
 				selectedIndex = -1;
 				RefreshAll();
 			}
-			catch
+			catch (Exception ex)
 			{
+				GameLogger.Log("LIGHT_EDITOR", $"Import JSON failed: {ex.Message}", LogLevel.Error);
 			}
 		}
 	}

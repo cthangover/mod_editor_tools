@@ -10,7 +10,9 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 {
     public sealed class TabData
     {
-        public string FilePath;
+        public string Key;
+        public string ModId;
+        public string RelativePath;
         public string FileName;
         public string SavedText;
         public bool IsDirty;
@@ -31,8 +33,12 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
         public TextEdit CodeEditor => _textEdit;
         public string CurrentText => _textEdit.Text;
-        public string CurrentAbsolutePath =>
-            _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count ? _tabs[_activeTabIndex].FilePath : null;
+        public string CurrentKey =>
+            _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count ? _tabs[_activeTabIndex].Key : null;
+        public string CurrentModId =>
+            _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count ? _tabs[_activeTabIndex].ModId : null;
+        public string CurrentRelativePath =>
+            _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count ? _tabs[_activeTabIndex].RelativePath : null;
         public bool HasActiveFile => _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count;
         public bool IsCurrentDirty =>
             _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && _tabs[_activeTabIndex].IsDirty;
@@ -73,24 +79,35 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             AddChild(_graphView);
         }
 
-        public void OpenFile(string absolutePath)
+        public void OpenFile(string key)
         {
             for (int i = 0; i < _tabs.Count; i++)
             {
-                if (_tabs[i].FilePath == absolutePath)
+                if (_tabs[i].Key == key)
                 {
                     SwitchToTextTab(i);
                     return;
                 }
             }
 
+            if (!ScenarioFileService.TryParseKey(key, out var modId, out var relativePath))
+                return;
+
             try
             {
-                var text = ScenarioFileService.ReadAllText(absolutePath);
+                var text = ScenarioFileService.ReadAllText(modId, relativePath);
+                if (text == null)
+                {
+                    GameLogger.Log("SCENARIO_EDITOR", $"Failed to read scenario '{key}'", LogLevel.Error);
+                    return;
+                }
+
                 var tab = new TabData
                 {
-                    FilePath = absolutePath,
-                    FileName = Path.GetFileNameWithoutExtension(absolutePath),
+                    Key = key,
+                    ModId = modId,
+                    RelativePath = relativePath,
+                    FileName = Path.GetFileNameWithoutExtension(relativePath),
                     SavedText = text,
                     IsDirty = false
                 };

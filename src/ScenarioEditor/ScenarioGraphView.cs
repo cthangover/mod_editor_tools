@@ -190,7 +190,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
             foreach (var sc in nodeData.Scenarios.OrderBy(s => s.Priority))
             {
-                var url = Uri.EscapeDataString(sc.FilePath);
+                var url = Uri.EscapeDataString(sc.Key);
                 sb.AppendLine($"  [{sc.Priority}] [url={url}]{sc.Name}[/url]");
             }
 

@@ -6,7 +6,6 @@ using Cthangover.Core.Scenarios;
 using Cthangover.Core.Factories.Impls;
 using Cthangover.Core.Utils;
 using Cthangover.Core.Mods;
-using Godot;
 
 namespace Cthangover.Tools.Services
 {
@@ -34,15 +33,24 @@ namespace Cthangover.Tools.Services
         public List<string> BackgroundRefs { get; set; } = new();
     }
 
-    /// <summary>Describes a single scenario file found during scanning.</summary>
+    /// <summary>
+    /// Describes a single scenario file found during scanning. The file is
+    /// addressed by its owning mod and mod-relative path, so both folder
+    /// mods and zip mods are covered; <see cref="Key"/> is the stable
+    /// identity used by the editor UI.
+    /// </summary>
     public sealed class ScenarioFileInfo
     {
-        /// <summary>Absolute path on disk.</summary>
-        public string AbsolutePath { get; set; }
+        /// <summary>Identifier of the mod that provides the file.</summary>
+        public string ModId { get; set; }
+        /// <summary>Mod-relative path, e.g. <c>scenarios/start.scenario</c>.</summary>
+        public string RelativePath { get; set; }
         /// <summary>Filename without extension.</summary>
         public string Name { get; set; }
         /// <summary>Directory path relative to the mod's <c>scenarios/</c> folder.</summary>
         public string RelativeDir { get; set; }
+        /// <summary>Stable UI identity: <c>modId:relativePath</c>.</summary>
+        public string Key => ScenarioFileService.MakeKey(ModId, RelativePath);
     }
 
     /// <summary>A group of scenario files within the same subdirectory under <c>scenarios/</c>.</summary>
@@ -65,65 +73,105 @@ namespace Cthangover.Tools.Services
 
     /// <summary>
     /// Static service for discovering, reading, writing, and analysing scenario files.
-    /// Scans all <c>mods/*/scenarios/**/*.scenario</c> files in the project, groups
-    /// them by mod and subdirectory, parses YAML-like metadata blocks, and extracts
-    /// referenced background/scene/locale/quest identifiers. Used by
-    /// <see cref="ScenarioEditorWindow"/> for the file tree and info panel.
+    /// Scans every loaded mod's <c>scenarios/</c> folder through the mod file
+    /// provider abstraction (<see cref="IModFileProvider"/>), so folder and zip
+    /// mods are discovered identically. Writing is only possible for folder mods:
+    /// zip mods are read-only, and <see cref="WriteAllText"/> reports that instead
+    /// of touching the filesystem. Used by <see cref="ScenarioEditorWindow"/> for
+    /// the file tree and info panel.
     /// </summary>
     public static class ScenarioFileService
     {
+        private const string ScenariosDir = "scenarios";
+        private const string ScenarioExtension = ".scenario";
+        private const string KeySeparator = ":";
+
         /// <summary>
-        /// Recursively scans <c>res://mods/*/scenarios/</c> for <c>.scenario</c> files.
-        /// Groups results by mod ID and subdirectory. Returns an empty list if the
-        /// mods directory does not exist.
+        /// Recursively scans every loaded mod's <c>scenarios/</c> folder for
+        /// <c>.scenario</c> files via <see cref="IModFileProvider"/>. Groups
+        /// results by mod ID and subdirectory. Returns an empty list when no
+        /// mods are loaded or none provide scenarios.
         /// </summary>
         public static List<ModScenarioTree> ScanScenarioFiles()
         {
             var result = new List<ModScenarioTree>();
-            var roots = ModRegistry.AllModsRoots;
+            var manager = ModManager.Instance;
 
-            foreach (var (modsPath, _) in roots)
+            foreach (var mod in manager.Mods.Values.OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase))
             {
-                if (!Directory.Exists(modsPath))
+                var files = new List<ScenarioFileInfo>();
+                CollectScenarioFiles(manager, mod.Id, ScenariosDir, files);
+                if (files.Count == 0)
                     continue;
 
-                foreach (var modDir in Directory.GetDirectories(modsPath).OrderBy(d => Path.GetFileName(d)))
-            {
-                var modId = Path.GetFileName(modDir);
-                var scenariosDir = Path.Combine(modDir, "scenarios");
-                if (!Directory.Exists(scenariosDir))
-                    continue;
-
-                var scenarioFiles = Directory.GetFiles(scenariosDir, "*.scenario", SearchOption.AllDirectories);
-                if (scenarioFiles.Length == 0)
-                    continue;
-
-                var groups = scenarioFiles
-                    .GroupBy(f =>
-                    {
-                        var relDir = Path.GetRelativePath(scenariosDir, Path.GetDirectoryName(f));
-                        return relDir == "." ? "" : relDir.Replace('\\', '/');
-                    })
-                    .OrderBy(g => g.Key)
+                var groups = files
+                    .GroupBy(f => f.RelativeDir)
+                    .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
                     .Select(g => new ScenarioGroup
                     {
                         DirectoryPath = g.Key,
-                        Files = g.OrderBy(f => Path.GetFileNameWithoutExtension(f))
-                            .Select(f => new ScenarioFileInfo
-                            {
-                                AbsolutePath = f,
-                                Name = Path.GetFileNameWithoutExtension(f),
-                                RelativeDir = g.Key
-                            })
-                            .ToList()
+                        Files = g.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase).ToList()
                     })
                     .ToList();
 
-                result.Add(new ModScenarioTree { ModId = modId, Groups = groups });
-            }
+                result.Add(new ModScenarioTree { ModId = mod.Id, Groups = groups });
             }
 
             return result;
+        }
+
+        private static void CollectScenarioFiles(ModManager manager, string modId, string directory, List<ScenarioFileInfo> result)
+        {
+            foreach (var entry in manager.ListFiles(modId, directory))
+            {
+                if (entry.EndsWith("/"))
+                {
+                    CollectScenarioFiles(manager, modId, entry.TrimEnd('/'), result);
+                    continue;
+                }
+
+                if (!entry.EndsWith(ScenarioExtension, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var path = entry.Replace('\\', '/');
+                var lastSlash = path.LastIndexOf('/');
+                var fileName = lastSlash >= 0 ? path.Substring(lastSlash + 1) : path;
+                var dirPath = lastSlash >= 0 ? path.Substring(0, lastSlash) : "";
+
+                var relativeDir = "";
+                if (dirPath.StartsWith(ScenariosDir + "/", StringComparison.OrdinalIgnoreCase))
+                    relativeDir = dirPath.Substring(ScenariosDir.Length + 1);
+                else if (!dirPath.Equals(ScenariosDir, StringComparison.OrdinalIgnoreCase))
+                    relativeDir = dirPath;
+
+                result.Add(new ScenarioFileInfo
+                {
+                    ModId = modId,
+                    RelativePath = path,
+                    Name = Path.GetFileNameWithoutExtension(fileName),
+                    RelativeDir = relativeDir
+                });
+            }
+        }
+
+        /// <summary>Builds the stable UI identity for a scenario file.</summary>
+        public static string MakeKey(string modId, string relativePath) => modId + KeySeparator + relativePath;
+
+        /// <summary>Splits a key produced by <see cref="MakeKey"/> back into mod ID and mod-relative path.</summary>
+        public static bool TryParseKey(string key, out string modId, out string relativePath)
+        {
+            modId = null;
+            relativePath = null;
+            if (string.IsNullOrEmpty(key))
+                return false;
+
+            var separator = key.IndexOf(KeySeparator, StringComparison.Ordinal);
+            if (separator <= 0 || separator >= key.Length - 1)
+                return false;
+
+            modId = key.Substring(0, separator);
+            relativePath = key.Substring(separator + 1);
+            return true;
         }
 
         /// <summary>
@@ -208,84 +256,95 @@ namespace Cthangover.Tools.Services
             return refs;
         }
 
-        /// <summary>Reads the entire file at <paramref name="filePath"/> as a UTF-8 string.</summary>
-        public static string ReadAllText(string filePath)
+        /// <summary>Reads a scenario file through its mod provider. Returns <c>null</c> when not found.</summary>
+        public static string ReadAllText(string modId, string relativePath)
         {
-            return File.ReadAllText(filePath);
+            return ModManager.Instance.ReadFileText(modId, relativePath);
         }
 
-        /// <summary>Writes <paramref name="text"/> to <paramref name="filePath"/>, overwriting existing content.</summary>
-        public static void WriteAllText(string filePath, string text)
+        /// <summary>
+        /// Writes a scenario file back to disk. Returns <c>false</c> when the
+        /// owning mod is not filesystem-backed (zip mods are read-only).
+        /// </summary>
+        public static bool WriteAllText(string modId, string relativePath, string text)
         {
-            File.WriteAllText(filePath, text);
+            var absolutePath = ModManager.Instance.GetFileSystemPath(modId, relativePath);
+            if (string.IsNullOrEmpty(absolutePath))
+                return false;
+
+            File.WriteAllText(absolutePath, text);
+            return true;
         }
 
-        /// <summary>Converts an absolute file path to a path relative to <c>res://</c>, using forward slashes.</summary>
-        public static string GetRelativePath(string absolutePath)
+        /// <summary>Absolute filesystem path of a scenario file, or <c>null</c> for zip-backed mods.</summary>
+        public static string GetAbsolutePath(string modId, string relativePath)
         {
-            var projectPath = GameEnvironment.IsRuntime ? ProjectSettings.GlobalizePath("res://") : "";
-            return Path.GetRelativePath(projectPath, absolutePath).Replace('\\', '/');
+            return ModManager.Instance.GetFileSystemPath(modId, relativePath);
+        }
+
+        /// <summary>Project-style display path (<c>mods/&lt;modId&gt;/&lt;relativePath&gt;</c>).</summary>
+        public static string GetDisplayPath(string modId, string relativePath)
+        {
+            return "mods/" + modId + "/" + relativePath;
         }
 
         public static SceneGraphData BuildSceneGraph()
         {
             var data = new SceneGraphData();
-            var sceneNodes = new Dictionary<string, SceneGraphNode>(System.StringComparer.OrdinalIgnoreCase);
-            var edgeSet = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            var sceneNodes = new Dictionary<string, SceneGraphNode>(StringComparer.OrdinalIgnoreCase);
+            var edgeSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            var allFiles = ScanAllScenarioFiles();
-
-            foreach (var file in allFiles)
+            foreach (var mod in ScanScenarioFiles())
             {
-                string text;
-                try
+                foreach (var group in mod.Groups)
                 {
-                    text = File.ReadAllText(file.AbsolutePath);
-                }
-                catch
-                {
-                    continue;
-                }
-
-                var metadata = ParseMetadata(text);
-                if (string.IsNullOrEmpty(metadata.Scene) || metadata.Scene == "-")
-                    continue;
-
-                var sceneKey = metadata.Scene.ToLowerInvariant();
-
-                if (!sceneNodes.TryGetValue(sceneKey, out var node))
-                {
-                    node = new SceneGraphNode
+                    foreach (var file in group.Files)
                     {
-                        SceneName = metadata.Scene,
-                        ModId = file.ModId,
-                        IsStartScene = string.Equals(metadata.Scene, "start_scene", System.StringComparison.OrdinalIgnoreCase)
-                    };
-                    sceneNodes[sceneKey] = node;
-                }
+                        var text = ReadAllText(file.ModId, file.RelativePath);
+                        if (text == null)
+                            continue;
 
-                node.ScenarioCount++;
-                node.Scenarios.Add(new ScenarioGraphLink
-                {
-                    Name = file.Name,
-                    Priority = int.TryParse(metadata.Priority, out var p) ? p : 0,
-                    FilePath = file.AbsolutePath
-                });
+                        var metadata = ParseMetadata(text);
+                        if (string.IsNullOrEmpty(metadata.Scene) || metadata.Scene == "-")
+                            continue;
 
-                var refs = ExtractReferences(text);
-                foreach (var target in refs.SwitchTargets)
-                {
-                    var srcKey = metadata.Scene.ToLowerInvariant();
-                    var dstKey = target.ToLowerInvariant();
-                    var edgeKey = srcKey + "|" + dstKey;
-                    if (!edgeSet.Contains(edgeKey))
-                    {
-                        edgeSet.Add(edgeKey);
-                        data.Edges.Add(new SceneGraphEdge
+                        var sceneKey = metadata.Scene.ToLowerInvariant();
+
+                        if (!sceneNodes.TryGetValue(sceneKey, out var node))
                         {
-                            FromScene = metadata.Scene,
-                            ToScene = target
+                            node = new SceneGraphNode
+                            {
+                                SceneName = metadata.Scene,
+                                ModId = file.ModId,
+                                IsStartScene = string.Equals(metadata.Scene, "start_scene", StringComparison.OrdinalIgnoreCase)
+                            };
+                            sceneNodes[sceneKey] = node;
+                        }
+
+                        node.ScenarioCount++;
+                        node.Scenarios.Add(new ScenarioGraphLink
+                        {
+                            Name = file.Name,
+                            Priority = int.TryParse(metadata.Priority, out var p) ? p : 0,
+                            Key = file.Key
                         });
+
+                        var refs = ExtractReferences(text);
+                        foreach (var target in refs.SwitchTargets)
+                        {
+                            var srcKey = metadata.Scene.ToLowerInvariant();
+                            var dstKey = target.ToLowerInvariant();
+                            var edgeKey = srcKey + "|" + dstKey;
+                            if (!edgeSet.Contains(edgeKey))
+                            {
+                                edgeSet.Add(edgeKey);
+                                data.Edges.Add(new SceneGraphEdge
+                                {
+                                    FromScene = metadata.Scene,
+                                    ToScene = target
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -294,45 +353,6 @@ namespace Cthangover.Tools.Services
                 data.Nodes.Add(node);
 
             return data;
-        }
-
-        private sealed class FlatScenarioFile
-        {
-            public string AbsolutePath;
-            public string Name;
-            public string ModId;
-        }
-
-        private static List<FlatScenarioFile> ScanAllScenarioFiles()
-        {
-            var result = new List<FlatScenarioFile>();
-            var roots = ModRegistry.AllModsRoots;
-
-            foreach (var (modsPath, _) in roots)
-            {
-                if (!Directory.Exists(modsPath))
-                    continue;
-
-                foreach (var modDir in Directory.GetDirectories(modsPath))
-                {
-                    var modId = Path.GetFileName(modDir);
-                    var scenariosDir = Path.Combine(modDir, "scenarios");
-                    if (!Directory.Exists(scenariosDir))
-                        continue;
-
-                    foreach (var file in Directory.GetFiles(scenariosDir, "*.scenario", SearchOption.AllDirectories))
-                    {
-                        result.Add(new FlatScenarioFile
-                        {
-                            AbsolutePath = file,
-                            Name = Path.GetFileNameWithoutExtension(file),
-                            ModId = modId
-                        });
-                    }
-                }
-            }
-
-            return result;
         }
     }
 }

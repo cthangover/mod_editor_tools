@@ -6,7 +6,7 @@ namespace Cthangover.Tools.Services
     {
         public string Name { get; set; }
         public int Priority { get; set; }
-        public string FilePath { get; set; }
+        public string Key { get; set; }
     }
 
     public sealed class SceneGraphNode
