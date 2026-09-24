@@ -324,7 +324,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             }
 
             var sceneService = GetNodeOrNull<GodotSceneService>("/root/GodotSceneService");
-            sceneService?.LoadScene("res://scenes/ui/base_scene.tscn");
+            sceneService?.LoadShell();
 
             _playActive = true;
         }

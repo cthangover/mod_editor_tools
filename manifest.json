@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "author": "ct",
   "description": "Development tools",
+  "category": "tools",
   "sources": [
     "src/**/*.cs"
   ],
