@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Cthangover.Core.UI;
+using Cthangover.Core.UI.Theming;
 using Godot;
 
 namespace Cthangover.Core.UI.Tool.SceneBuilder
@@ -65,7 +66,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             _banner = new Label();
             _banner.AutowrapMode = TextServer.AutowrapMode.WordSmart;
             _banner.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            _banner.Modulate = new Color(1f, 0.75f, 0.3f);
+            _banner.Modulate = UiTokens.Warning;
             _banner.Visible = false;
             root.AddChild(_banner);
 
@@ -125,7 +126,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             foreach (var entry in InspectorPropertyCatalog.Build(node, insideContainer))
             {
                 var categoryLabel = new Label { Text = TranslationServer.Translate(entry.CategoryKey) };
-                categoryLabel.Modulate = new Color(1f, 0.85f, 0.4f);
+                categoryLabel.Modulate = UiTokens.AccentBright;
                 _rows.AddChild(categoryLabel);
 
                 foreach (var property in entry.Properties)
@@ -367,7 +368,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         private Color ReadColor(string key)
         {
             var v = _node.Get(key);
-            return v.VariantType == Variant.Type.Nil ? Colors.White : v.AsColor();
+            return v.VariantType == Variant.Type.Nil ? UiTokens.White : v.AsColor();
         }
 
         private Vector2 ReadVector2(string key)

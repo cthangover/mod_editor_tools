@@ -1,5 +1,6 @@
 ﻿using System;
 using Cthangover.Core.Scenes;
+using Cthangover.Core.UI.Theming;
 using Cthangover.Core.Utils;
 using Cthangover.Tools.Services;
 using Godot;
@@ -27,6 +28,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
         public ScenarioEditorWindow() : base("tools/scenario_editor/title")
         {
+            CthangoverTheme.Apply(this);
             BuildUI();
         }
 

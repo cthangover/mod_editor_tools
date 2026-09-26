@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Cthangover.Core.UI.Theming;
 using Cthangover.Tools.Services;
 using Godot;
 
@@ -36,7 +37,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                 var modItem = _fileTree.CreateItem(root);
                 modItem.SetText(0, $"[{mod.ModId}]");
                 modItem.SetSelectable(0, false);
-                modItem.SetCustomColor(0, new Color(0.5f, 0.75f, 1f));
+                modItem.SetCustomColor(0, UiTokens.Info);
 
                 foreach (var group in mod.Groups)
                 {

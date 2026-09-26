@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Cthangover.Core.UI.Theming;
 using Cthangover.Core.Utils;
 using Godot;
 
@@ -56,6 +57,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         /// <summary>Constructs the window, creates the controller, builds UI, and populates selectors.</summary>
         public SceneBuilderWindow() : base("tools/scene_builder/title")
         {
+            CthangoverTheme.Apply(this);
             _controller = new SceneBuilderController();
             BuildUI();
             PopulateBaseList();

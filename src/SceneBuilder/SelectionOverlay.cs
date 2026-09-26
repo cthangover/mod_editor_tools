@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Cthangover.Core.UI;
+using Cthangover.Core.UI.Theming;
 using Godot;
 
 namespace Cthangover.Core.UI.Tool.SceneBuilder
@@ -87,13 +88,13 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             Resized += Refresh;
 
             for (var i = 0; i < 4; i++)
-                _borderRects.Add(CreateMarker(new Color(1f, 0.85f, 0.35f, 0.95f)));
+                _borderRects.Add(CreateMarker(UiTokens.Alpha(UiTokens.AccentBright, 0.95f)));
             for (var i = 0; i < ResizeMarkerCount; i++)
-                _handleRects.Add(CreateMarker(new Color(1f, 0.62f, 0.1f, 1f)));
+                _handleRects.Add(CreateMarker(UiTokens.Accent));
             for (var i = 0; i < AnchorDotCount * 2; i++)
-                _anchorLines.Add(CreateMarker(new Color(0.35f, 0.75f, 1f, 0.55f)));
+                _anchorLines.Add(CreateMarker(UiTokens.Alpha(UiTokens.Info, 0.55f)));
             for (var i = 0; i < AnchorDotCount; i++)
-                _anchorDots.Add(CreateMarker(new Color(0.45f, 0.85f, 1f, 1f)));
+                _anchorDots.Add(CreateMarker(UiTokens.Info));
 
             GuiInput += OnOverlayGui;
         }

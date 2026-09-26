@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Cthangover.Core.Scenarios;
 using Cthangover.Core.Factories.Impls;
+using Cthangover.Core.UI.Theming;
 using Godot;
 
 namespace Cthangover.Tools.Services
@@ -18,19 +19,19 @@ namespace Cthangover.Tools.Services
     {
         /// <summary>
         /// Builds a <see cref="CodeHighlighter"/> for scenario DSL syntax.
-        /// Comments (lines starting with <c>#</c>) are green, strings are orange,
-        /// command names are blue, and argument keywords (e.g. <c>key</c>,
-        /// <c>wait</c>, <c>quest_id</c>) are amber.
+        /// Comments (lines starting with <c>#</c>) are green, strings are bright
+        /// gold, command names are blue, and argument keywords (e.g. <c>key</c>,
+        /// <c>wait</c>, <c>quest_id</c>) are amber — all from <see cref="UiTokens"/>.
         /// </summary>
         public static CodeHighlighter CreateHighlighter()
         {
             var hl = new CodeHighlighter();
-            hl.AddColorRegion("#", null, new Color(0.45f, 0.75f, 0.45f), true);
-            hl.AddColorRegion("\"", "\"", new Color(1f, 0.6f, 0.4f), false);
-            hl.NumberColor = new Color(0.7f, 0.7f, 1f);
-            hl.SymbolColor = new Color(0.8f, 0.8f, 0.8f);
+            hl.AddColorRegion("#", null, UiTokens.Success, true);
+            hl.AddColorRegion("\"", "\"", UiTokens.AccentBright, false);
+            hl.NumberColor = UiTokens.Info;
+            hl.SymbolColor = UiTokens.Muted;
 
-            var cmdColor = new Color(0.4f, 0.7f, 1f);
+            var cmdColor = UiTokens.Info;
             hl.KeywordColors = new Godot.Collections.Dictionary();
 
             foreach (var cmd in ScenarioCommandStrategyFactory.GetAllCommandNames())
@@ -40,7 +41,7 @@ namespace Cthangover.Tools.Services
                 "option", "select"
             }) hl.KeywordColors[cmd] = cmdColor;
             
-            var argColor = new Color(0.8f, 0.6f, 0.3f);
+            var argColor = UiTokens.Accent;
             foreach (var kw in new[] {
                 "key", "first", "second", "hide_color", "wait", "speed", "hidden",
                 "sprites", "loop", "target", "quest_id", "show", "hide", "duration"

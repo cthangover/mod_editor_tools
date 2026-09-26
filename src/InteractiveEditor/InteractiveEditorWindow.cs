@@ -1,9 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Cthangover.Core.Interactive;
 using Cthangover.Core.Mods;
 using Cthangover.Core.Mods.Resolvers;
 using Cthangover.Core.Factories.Impls;
+using Cthangover.Core.UI.Theming;
 using Cthangover.Core.UI.Tool;
 using Cthangover.Core.Utils;
 using Cthangover.Tools.Services;
@@ -13,13 +14,13 @@ namespace Cthangover.Tools.InteractiveEditor
 {
 	public partial class InteractiveEditorWindow : ToolWindow
 	{
-		private static readonly Color _rectColor = new(0f, 1f, 0f, 0.6f);
-		private static readonly Color _circleColor = new(0f, 0.5f, 1f, 0.6f);
-		private static readonly Color _vertexColor = new(1f, 0.8f, 0f, 0.8f);
-		private static readonly Color _colliderOverlayColor = new(0f, 1f, 0f, 0.15f);
-		private static readonly Color _colliderCircleOverlayColor = new(0f, 0.5f, 1f, 0.15f);
-		private static readonly Color _colliderPolyOverlayColor = new(1f, 0.5f, 0f, 0.15f);
-		private static readonly Color _colliderPolyOutlineColor = new(1f, 0.5f, 0f, 0.6f);
+		private static readonly Color _rectColor = UiTokens.Alpha(UiTokens.Success, 0.6f);
+		private static readonly Color _circleColor = UiTokens.Alpha(UiTokens.Info, 0.6f);
+		private static readonly Color _vertexColor = UiTokens.Alpha(UiTokens.AccentBright, 0.8f);
+		private static readonly Color _colliderOverlayColor = UiTokens.Alpha(UiTokens.Success, 0.15f);
+		private static readonly Color _colliderCircleOverlayColor = UiTokens.Alpha(UiTokens.Info, 0.15f);
+		private static readonly Color _colliderPolyOverlayColor = UiTokens.Alpha(UiTokens.Accent, 0.15f);
+		private static readonly Color _colliderPolyOutlineColor = UiTokens.Alpha(UiTokens.Accent, 0.6f);
 
 		private InteractiveEditorController _controller = new();
 
@@ -56,6 +57,7 @@ namespace Cthangover.Tools.InteractiveEditor
 		public InteractiveEditorWindow() : base("tools/interactive_editor/title")
 		{
 			Size = new Vector2I(1280, 820);
+			CthangoverTheme.Apply(this);
 
 			var outer = CreateFillContainer();
 			AddChild(outer);
@@ -215,7 +217,7 @@ namespace Cthangover.Tools.InteractiveEditor
 			AddLabel(parent, "tools/interactive_editor/label_highlight_color");
 			_highlightColorBtn = new ColorPickerButton
 			{
-				Color = new Color(1f, 1f, 0f, 0.2f),
+				Color = UiTokens.Alpha(UiTokens.Accent, 0.2f),
 				CustomMinimumSize = new Vector2(40, 30)
 			};
 			_highlightColorBtn.ColorChanged += _ => OnParamChanged();
@@ -262,7 +264,7 @@ namespace Cthangover.Tools.InteractiveEditor
 		private void AddLabel(Control parent, string locKey)
 		{
 			var label = new Label { Text = Tr(locKey) };
-			label.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.7f));
+			label.AddThemeColorOverride("font_color", UiTokens.Muted);
 			parent.AddChild(label);
 		}
 
@@ -850,3 +852,4 @@ namespace Cthangover.Tools.InteractiveEditor
 		}
 	}
 }
+

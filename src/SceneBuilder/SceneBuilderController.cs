@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Cthangover.Core.Mods;
 using Cthangover.Core.Scenes;
+using Cthangover.Core.UI.Theming;
 using Godot;
 
 namespace Cthangover.Core.UI.Tool.SceneBuilder
@@ -240,7 +241,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         private void AttachHighlight(Node root)
         {
             _highlight = new ColorRect();
-            _highlight.Color = new Color(1f, 0.7f, 0f, 0.35f);
+            _highlight.Color = UiTokens.Alpha(UiTokens.Accent, 0.35f);
             _highlight.Visible = false;
             _highlight.MouseFilter = Control.MouseFilterEnum.Ignore;
             _highlight.ZIndex = 4096;
@@ -335,7 +336,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
 
                 _highlight.Position = pos;
                 _highlight.Size = new Vector2(20, 20);
-                _highlight.Color = new Color(1f, 0.3f, 0.3f, 0.5f);
+                _highlight.Color = UiTokens.Alpha(UiTokens.Danger, 0.5f);
                 _highlight.Visible = true;
             }
         }
@@ -424,7 +425,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         {
             if (_highlight != null)
                 _highlight.Visible = false;
-            _highlight.Color = new Color(1f, 0.7f, 0f, 0.35f);
+            _highlight.Color = UiTokens.Alpha(UiTokens.Accent, 0.35f);
         }
     }
 }

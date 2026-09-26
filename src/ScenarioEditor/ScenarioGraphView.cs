@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Cthangover.Core.UI.Theming;
 using Cthangover.Tools.Services;
 using Godot;
 
@@ -102,18 +103,18 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                            (bgCount > 1 ? $" +{bgCount - 1}" : "") : "")
                 });
 
-                var color = Colors.White;
+                var color = UiTokens.White;
                 if (nodeData.IsStartScene)
                 {
-                    color = new Color(0.3f, 1f, 0.3f);
-                    gn.AddThemeStyleboxOverride("titlebar", CreateTitlebarStyle(new Color(0.2f, 0.5f, 0.15f)));
+                    color = UiTokens.Success;
+                    gn.AddThemeStyleboxOverride("titlebar", CreateTitlebarStyle(UiTokens.Alpha(UiTokens.Success, 0.3f)));
                 }
                 else if (nodeData.HasErrors)
                 {
-                    color = new Color(1f, 0.3f, 0.3f);
-                    gn.AddThemeStyleboxOverride("titlebar", CreateTitlebarStyle(new Color(0.5f, 0.1f, 0.1f)));
+                    color = UiTokens.DangerText;
+                    gn.AddThemeStyleboxOverride("titlebar", CreateTitlebarStyle(UiTokens.Alpha(UiTokens.Danger, 0.5f)));
                 }
-                gn.SetSlot(0, true, 0, Colors.White, true, 0, color);
+                gn.SetSlot(0, true, 0, UiTokens.White, true, 0, color);
 
                 _graph.AddChild(gn);
                 _nodes[key] = gn;
@@ -148,14 +149,10 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
         private static StyleBoxFlat CreateTitlebarStyle(Color bgColor)
         {
-            return new StyleBoxFlat
-            {
-                BgColor = bgColor,
-                CornerRadiusTopLeft = 6,
-                CornerRadiusTopRight = 6,
-                CornerRadiusBottomLeft = 0,
-                CornerRadiusBottomRight = 0
-            };
+            var style = UiKit.Frame(UiTokens.RadiusMd, bgColor);
+            style.CornerRadiusBottomLeft = 0;
+            style.CornerRadiusBottomRight = 0;
+            return style;
         }
 
         private void ClearGraph()

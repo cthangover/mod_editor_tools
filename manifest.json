@@ -4,9 +4,9 @@
   "version": "1.0.0",
   "author": "ct",
   "description": "Development tools",
-  "category": "tools",
+  "category": "tools, editor",
   "sources": [
     "src/**/*.cs"
   ],
-  "depends": ["core>=1"]
+  "depends": ["visual_novel_core>=1"]
 }

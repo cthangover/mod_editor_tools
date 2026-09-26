@@ -3,6 +3,7 @@ using System.Text.Json;
 using Cthangover.Core.Mods;
 using Cthangover.Core.Mods.Resolvers;
 using Cthangover.Core.UI.Lights;
+using Cthangover.Core.UI.Theming;
 using Godot;
 
 namespace Cthangover.Core.UI.Tool.LightEditor
@@ -36,7 +37,7 @@ namespace Cthangover.Core.UI.Tool.LightEditor
 				previewPositions[i] = new Vector2(-1000f, -1000f);
 				previewRadii[i] = 0f;
 				previewInfluence[i] = 0f;
-				previewColors[i] = Colors.White;
+				previewColors[i] = UiTokens.White;
 			}
 		}
 
@@ -122,7 +123,7 @@ namespace Cthangover.Core.UI.Tool.LightEditor
 				previewPositions[i] = new Vector2(-1000f, -1000f);
 				previewRadii[i] = 0f;
 				previewInfluence[i] = 0f;
-				previewColors[i] = Colors.White;
+				previewColors[i] = UiTokens.White;
 			}
 
 			int count = Mathf.Min(Lights.Count, 10);
