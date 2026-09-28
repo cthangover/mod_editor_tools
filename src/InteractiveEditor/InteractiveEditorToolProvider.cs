@@ -16,6 +16,8 @@ namespace Cthangover.Tools.InteractiveEditor
         public string LocaleKey => "tools/interactive_editor/title";
         /// <summary>Creates the editor window instance.</summary>
         public Window CreateWindow() => new InteractiveEditorWindow();
+        /// <summary>Adds the interactive editor's launcher button to the main menu tool block.</summary>
+        public void AddMenuButton(Container container) => ToolMenuButton.Attach(container, this);
     }
 
     /// <summary>

@@ -12,5 +12,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         public string LocaleKey => "tools/scene_builder/title";
         /// <summary>Creates the editor window instance.</summary>
         public Window CreateWindow() => new SceneBuilderWindow();
+        /// <summary>Adds the scene builder's launcher button to the main menu tool block.</summary>
+        public void AddMenuButton(Container container) => ToolMenuButton.Attach(container, this);
     }
 }

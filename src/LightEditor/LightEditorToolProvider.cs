@@ -12,6 +12,8 @@ namespace Cthangover.Core.UI.Tool.LightEditor
         public string LocaleKey => "tools/light_editor/title";
         /// <summary>Creates the editor window instance.</summary>
         public Window CreateWindow() => new LightEditorWindow();
+        /// <summary>Adds the light editor's launcher button to the main menu tool block.</summary>
+        public void AddMenuButton(Container container) => ToolMenuButton.Attach(container, this);
     }
 
     /// <summary>Toolbox button that opens the light editor. Always visible.</summary>

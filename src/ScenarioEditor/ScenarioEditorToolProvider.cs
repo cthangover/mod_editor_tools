@@ -12,5 +12,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
         public string LocaleKey => "tools/scenario_editor/title";
         /// <summary>Creates the editor window instance.</summary>
         public Window CreateWindow() => new ScenarioEditorWindow();
+        /// <summary>Adds the scenario editor's launcher button to the main menu tool block.</summary>
+        public void AddMenuButton(Container container) => ToolMenuButton.Attach(container, this);
     }
 }

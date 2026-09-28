@@ -19,5 +19,8 @@ namespace Cthangover.Core.UI.Tool.CatalogExport
 
         /// <summary>Creates the export window instance.</summary>
         public Window CreateWindow() => new CatalogExportWindow();
+
+        /// <summary>Adds the catalog export launcher button to the main menu tool block.</summary>
+        public void AddMenuButton(Container container) => ToolMenuButton.Attach(container, this);
     }
 }
