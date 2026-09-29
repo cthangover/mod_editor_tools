@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Cthangover.Core.Factories.Impls;
@@ -52,6 +53,27 @@ namespace Cthangover.Tools.Services
                 set.Add(ext.ToLower());
             }
             return set;
+        }
+
+        /// <summary>
+        /// Returns every texture logical name (filename without extension) from
+        /// all configured texture groups, sorted for stable UI lists. Used by
+        /// the map editor's marker icon picker: these are exactly the IDs that
+        /// <c>MapZone.Image</c> accepts, because resolution also keys textures
+        /// by basename.
+        /// </summary>
+        public static List<string> GetTextureIds()
+        {
+            var ids = new List<string>();
+            var textures = Textures.Collect();
+            if (textures == null)
+                return ids;
+
+            foreach (var kvp in textures)
+                ids.Add(kvp.Key);
+
+            ids.Sort(StringComparer.OrdinalIgnoreCase);
+            return ids;
         }
         
         /// <summary>
