@@ -56,6 +56,7 @@ namespace Cthangover.Tools.MapEditor
         private ItemList _iconList;
         private CheckBox _lockedCheck;
         private CheckBox _hiddenCheck;
+        private Label _availabilityLabel;
         private CheckBox _labelCheck;
         private LineEdit _posX;
         private LineEdit _posY;
@@ -255,6 +256,10 @@ namespace Cthangover.Tools.MapEditor
             _hiddenCheck = new CheckBox { Text = Tr("tools/map_editor/hidden") };
             _hiddenCheck.Toggled += _ => OnFieldsChanged();
             sidebar.AddChild(_hiddenCheck);
+
+            _availabilityLabel = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
+            _availabilityLabel.AddThemeColorOverride("font_color", UiTokens.Faint);
+            sidebar.AddChild(_availabilityLabel);
 
             sidebar.AddChild(new Label { Text = Tr("tools/map_editor/vertices") });
 
@@ -722,6 +727,8 @@ namespace Cthangover.Tools.MapEditor
             SetDirty();
             RefreshJson();
             UpdateZoneListLabel();
+            UpdateAvailability(zone);
+            _canvas.QueueRedraw();
         }
 
         private void OnImageChanged()
@@ -893,6 +900,7 @@ namespace Cthangover.Tools.MapEditor
                 _labelX.Text = string.Empty;
                 _labelY.Text = string.Empty;
                 _labelCheck.ButtonPressed = false;
+                _availabilityLabel.Text = string.Empty;
                 return;
             }
 
@@ -913,6 +921,37 @@ namespace Cthangover.Tools.MapEditor
 
             WritePositionsToSidebar(zone);
             UpdateTitlePreview();
+            UpdateAvailability(zone);
+        }
+
+        /// <summary>
+        /// Shows the availability the current authoring data produces in the
+        /// game. The sidebar flags alone are not the whole truth: the player
+        /// also refuses to travel to a zone with an empty or unregistered
+        /// scene, so the hint goes through the shared <see cref="MapZoneRules"/>
+        /// and the editor cannot disagree with the map the player sees.
+        /// </summary>
+        private void UpdateAvailability(MapZone zone)
+        {
+            if (zone == null)
+            {
+                _availabilityLabel.Text = string.Empty;
+                return;
+            }
+
+            string state;
+            if (zone.Hidden)
+                state = Tr("tools/map_editor/effective_hidden");
+            else if (zone.Locked)
+                state = Tr("tools/map_editor/effective_locked");
+            else if (string.IsNullOrEmpty(zone.Scene))
+                state = Tr("tools/map_editor/effective_no_scene");
+            else if (MapZoneRules.IsLocked(zone, true))
+                state = Tr("tools/map_editor/effective_unknown_scene");
+            else
+                state = Tr("tools/map_editor/effective_open");
+
+            _availabilityLabel.Text = $"{Tr("tools/map_editor/effective")} {state}";
         }
 
         private void WritePositionsToSidebar(MapZone zone)

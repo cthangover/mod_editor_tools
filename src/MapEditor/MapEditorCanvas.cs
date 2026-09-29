@@ -272,7 +272,10 @@ namespace Cthangover.Tools.MapEditor
         private void DrawZone(MapZone zone, Rect2 rect, bool selected)
         {
             if (zone.Points != null && zone.Points.Count >= 2)
-                MapZoneStyle.Draw(this, ToPixels(zone.Points, rect), selected, false, zone.Locked);
+            {
+                var locked = MapZoneRules.IsLocked(zone, !zone.Locked);
+                MapZoneStyle.Draw(this, ToPixels(zone.Points, rect), selected, false, locked, zone.Hidden);
+            }
 
             if (HasMarker(zone))
                 DrawMarker(zone, ToPixel(zone.ImagePos, rect), selected);
