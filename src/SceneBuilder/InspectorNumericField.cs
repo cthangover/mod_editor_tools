@@ -17,6 +17,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         private string _key;
         private bool _integer;
 
+        /// <summary>Applies the property's min/max/step and integer mode, then seeds the initial (clamped) value.</summary>
         public void Setup(InspectableProperty property, double initialValue)
         {
             _key = property.Key;

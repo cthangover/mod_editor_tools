@@ -15,6 +15,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
 
         private InspectableProperty _property;
 
+        /// <summary>Populates the dropdown from the property's enum labels and selects the current value, if known.</summary>
         public void Setup(InspectableProperty property, long currentValue)
         {
             _property = property;

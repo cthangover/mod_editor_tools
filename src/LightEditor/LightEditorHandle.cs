@@ -1,4 +1,4 @@
-using Cthangover.Core.UI.Lights;
+using Cthangover.Mods.Time;
 using Godot;
 
 namespace Cthangover.Core.UI.Tool.LightEditor

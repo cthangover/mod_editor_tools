@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Cthangover.Mods.Dialog.Scenarios;
 using Cthangover.Core.Scenarios;
 using Cthangover.Core.Factories.Impls;
 using Cthangover.Core.UI.Theming;

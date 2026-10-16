@@ -1,6 +1,7 @@
 using Cthangover.Core.UI.Tool;
 using Godot;
 
+using Cthangover.Mods.Interface.Tool;
 namespace Cthangover.Core.UI.Tool.ScenarioEditor
 {
     /// <summary>Registers the scenario editor as a tool window. Creates <see cref="ScenarioEditorWindow"/> instances.</summary>

@@ -1,6 +1,7 @@
 using Cthangover.Core.UI.Tool;
 using Godot;
 
+using Cthangover.Mods.Interface.Tool;
 namespace Cthangover.Tools.InteractiveEditor
 {
     /// <summary>

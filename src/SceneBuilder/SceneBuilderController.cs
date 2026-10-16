@@ -341,6 +341,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             }
         }
 
+        /// <summary>Hierarchy tree item for a live node; null when unmapped.</summary>
         public TreeItem GetItemForNode(Node node)
         {
             _nodeToItem.TryGetValue(node, out var item);
@@ -392,6 +393,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             return string.Join("/", segments);
         }
 
+        /// <summary>Topmost loaded-scene node whose visual rect contains the viewport position; null when nothing matches.</summary>
         public Node FindNodeAtPosition(Vector2 position)
         {
             if (_loadedRoot == null)
