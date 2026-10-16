@@ -3,10 +3,10 @@
   "name": "Tools",
   "version": "1.0.0",
   "author": "ct",
-  "description": "Development tools",
+  "description": "Developer toolbox of ToolBox windows: scenario graph editor, map editor with zones, scene builder with inspector, interactive and light editors, and the mod catalog export window.",
   "category": "tools, editor",
   "sources": [
     "src/**/*.cs"
   ],
-  "depends": ["visual_novel_core>=1"]
+  "depends": ["visual_novel_core>=1", "dialog_base>=1", "interactive_base>=1", "time_base>=1", "map_base>=1", "interface>=1"]
 }

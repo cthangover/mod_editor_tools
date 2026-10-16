@@ -10,6 +10,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
 
         private string _key;
 
+        /// <summary>Binds the picker to the property key and seeds it with the current color.</summary>
         public void Setup(InspectableProperty property, Color value)
         {
             _key = property.Key;

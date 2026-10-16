@@ -16,6 +16,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         private SpinBox _x;
         private SpinBox _y;
 
+        /// <summary>Builds the x/y spin pair bound to the property key and seeds both axes.</summary>
         public void Setup(InspectableProperty property, Vector2 initialValue)
         {
             _key = property.Key;

@@ -13,6 +13,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
     /// </summary>
     public static class TscnLiteralReader
     {
+        /// <summary>Parses a bare .tscn float literal; constructors and references return false.</summary>
         public static bool TryReadFloat(string raw, out double value)
         {
             value = 0d;
@@ -21,6 +22,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             return double.TryParse(raw.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
         }
 
+        /// <summary>Parses a bare .tscn integer literal; floats and constructors return false.</summary>
         public static bool TryReadLong(string raw, out long value)
         {
             value = 0;
@@ -29,6 +31,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             return long.TryParse(raw.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
         }
 
+        /// <summary>Parses a .tscn boolean literal (true/false).</summary>
         public static bool TryReadBool(string raw, out bool value)
         {
             var t = raw?.Trim();
@@ -56,6 +59,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
                 .Replace("\\\\", "\\");
         }
 
+        /// <summary>Parses a <c>Vector2(x, y)</c> constructor literal.</summary>
         public static bool TryReadVector2(string raw, out Vector2 value)
         {
             value = Vector2.Zero;
@@ -68,6 +72,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             return true;
         }
 
+        /// <summary>Parses a <c>Color(r, g, b[, a])</c> constructor literal.</summary>
         public static bool TryReadColor(string raw, out Color value)
         {
             value = Colors.White;

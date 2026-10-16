@@ -8,6 +8,7 @@ using Cthangover.Core.UI.Tool;
 using Cthangover.Core.Utils;
 using Godot;
 
+using Cthangover.Mods.Interface.Tool;
 namespace Cthangover.Core.UI.Tool.CatalogExport
 {
     /// <summary>

@@ -1,4 +1,5 @@
 using System;
+using Cthangover.Mods.Dialog.Scenarios;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -288,6 +289,7 @@ namespace Cthangover.Tools.Services
             return "mods/" + modId + "/" + relativePath;
         }
 
+        /// <summary>Scans every mod's scenarios and builds the cross-scene graph (nodes per scene, edges per switch target).</summary>
         public static SceneGraphData BuildSceneGraph()
         {
             var data = new SceneGraphData();

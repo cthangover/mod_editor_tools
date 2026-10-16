@@ -4,6 +4,7 @@ using Godot;
 
 namespace Cthangover.Core.UI.Tool.ScenarioEditor
 {
+    /// <summary>Read-only metadata panel for the scenario in the active text tab: scene, priority, condition, switch targets, locale keys and quest references.</summary>
     public partial class ScenarioInfoPanel : VBoxContainer
     {
         private Label _infoScene;
@@ -30,6 +31,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             _infoQuestRefs = GetNode<Label>("Scroll/VBox/InfoQuestRefs");
         }
 
+        /// <summary>Parses the given scenario text and refreshes every metadata row.</summary>
         public void Update(string text)
         {
             if (string.IsNullOrEmpty(text))
@@ -49,6 +51,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             _infoQuestRefs.Text = refs.QuestRefs.Count > 0 ? string.Join(", ", refs.QuestRefs.Distinct()) : "-";
         }
 
+        /// <summary>Resets every metadata row to the "-" placeholder.</summary>
         public void Clear()
         {
             _infoScene.Text = "-";

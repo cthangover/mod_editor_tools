@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using Cthangover.Core.Mods;
 using Cthangover.Core.Mods.Providers;
-using Cthangover.Core.UI.Tool;
+using Cthangover.Mods.Map;
 using Cthangover.Core.Utils;
 
 namespace Cthangover.Tools.Services

@@ -1,6 +1,7 @@
 using Cthangover.Core.UI.Tool;
 using Godot;
 
+using Cthangover.Mods.Interface.Tool;
 namespace Cthangover.Core.UI.Tool.SceneBuilder
 {
     /// <summary>Registers the scene builder as a tool window. Creates <see cref="SceneBuilderWindow"/> instances.</summary>

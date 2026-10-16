@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Cthangover.Core.Mods.Resolvers;
 using Cthangover.Core.UI.Theming;
-using Cthangover.Core.UI.Tool;
+using Cthangover.Mods.Map;
 using Godot;
 
 namespace Cthangover.Tools.MapEditor

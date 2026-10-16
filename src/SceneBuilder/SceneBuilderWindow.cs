@@ -5,6 +5,7 @@ using Cthangover.Core.UI.Theming;
 using Cthangover.Core.Utils;
 using Godot;
 
+using Cthangover.Mods.Interface.Tool;
 namespace Cthangover.Core.UI.Tool.SceneBuilder
 {
     /// <summary>

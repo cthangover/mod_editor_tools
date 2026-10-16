@@ -8,6 +8,7 @@ using Godot;
 
 namespace Cthangover.Core.UI.Tool.ScenarioEditor
 {
+    /// <summary>State of one open scenario file tab: identity, saved text and dirty flag.</summary>
     public sealed class TabData
     {
         public string Key;
@@ -18,6 +19,11 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
         public bool IsDirty;
     }
 
+    /// <summary>
+    /// Tabbed editor area of the scenario editor: a permanent graph tab plus
+    /// one text tab per opened .scenario file, with dirty tracking and a
+    /// monospace syntax-highlighted code editor.
+    /// </summary>
     public partial class ScenarioEditTabs : VBoxContainer
     {
         private const int GraphTabIndex = 0;
@@ -79,6 +85,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             AddChild(_graphView);
         }
 
+        /// <summary>Opens the scenario in a new tab, or just activates its existing tab.</summary>
         public void OpenFile(string key)
         {
             for (int i = 0; i < _tabs.Count; i++)
@@ -123,6 +130,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             }
         }
 
+        /// <summary>Marks the active tab clean, remembering the editor text as the saved baseline.</summary>
         public void SaveCurrentFile()
         {
             if (_activeTabIndex < 0 || _activeTabIndex >= _tabs.Count)
@@ -138,6 +146,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             }
         }
 
+        /// <summary>Replaces the editor text without firing the text-changed handler.</summary>
         public void SetTextSilent(string text)
         {
             _suppressTextChanged = true;
@@ -145,6 +154,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             _suppressTextChanged = false;
         }
 
+        /// <summary>Switches to the graph tab when no file tabs are open.</summary>
         public void SetViewToGraph()
         {
             if (_tabs.Count > 0)
@@ -156,6 +166,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             GraphTabSelected?.Invoke();
         }
 
+        /// <summary>Rebuilds the graph from the current scenario files, if the graph tab is visible.</summary>
         public void RefreshGraph()
         {
             if (_graphView.Visible)
@@ -165,6 +176,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             }
         }
 
+        /// <summary>Returns false when any tab still has unsaved changes.</summary>
         public bool ConfirmCloseAll()
         {
             for (int i = _tabs.Count - 1; i >= 0; i--)

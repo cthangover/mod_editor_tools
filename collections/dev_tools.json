@@ -1,5 +1,6 @@
 {
   "id": "dev_tools",
+  "kind": "toolset",
   "name": "Developer Tools",
   "author": "ct",
   "version": "1.0.0",

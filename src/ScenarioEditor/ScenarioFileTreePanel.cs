@@ -6,6 +6,7 @@ using Godot;
 
 namespace Cthangover.Core.UI.Tool.ScenarioEditor
 {
+    /// <summary>Left-hand tree of every mod's scenario files, grouped by mod and subdirectory; raises <see cref="FileSelected"/> on picks.</summary>
     public partial class ScenarioFileTreePanel : VBoxContainer
     {
         private Tree _fileTree;
@@ -70,6 +71,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             return item.GetInstanceId().ToString();
         }
 
+        /// <summary>Programmatically selects the tree row for a scenario key (no selection event).</summary>
         public void SelectFile(string key)
         {
             if (!_keyToTreeItem.TryGetValue(key, out var item))

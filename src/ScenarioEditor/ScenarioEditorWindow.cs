@@ -1,12 +1,18 @@
-﻿using System;
+using System;
 using Cthangover.Core.Scenes;
 using Cthangover.Core.UI.Theming;
 using Cthangover.Core.Utils;
 using Cthangover.Tools.Services;
 using Godot;
 
+using Cthangover.Mods.Interface.Tool;
 namespace Cthangover.Core.UI.Tool.ScenarioEditor
 {
+    /// <summary>
+    /// Tool window hosting the scenario editor: a file tree of every mod's
+    /// .scenario files, tabbed text/graph editors, metadata and thumbnail
+    /// panels, plus a play-test mode that runs the current scenario in-game.
+    /// </summary>
     public partial class ScenarioEditorWindow : ToolWindow
     {
         private Control _editLayout;
@@ -32,6 +38,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             BuildUI();
         }
 
+        /// <summary>Opens with the graph view so the editor starts on the cross-scene map.</summary>
         public override void _Ready()
         {
             _editTabs.SetViewToGraph();
@@ -41,6 +48,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
         {
         }
 
+        /// <summary>Returns from play-test mode as soon as the in-game test play ends.</summary>
         public override void _Process(double delta)
         {
             if (_playActive && !SceneManager.IsTestPlayActive)

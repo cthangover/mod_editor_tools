@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using Cthangover.Core.Mods;
 using Cthangover.Core.Mods.Resolvers;
-using Cthangover.Core.UI.Lights;
+using Cthangover.Mods.Time;
 using Cthangover.Core.UI.Theming;
 using Godot;
 

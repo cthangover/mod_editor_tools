@@ -5,8 +5,10 @@ using Cthangover.Core.UI.Theming;
 using Cthangover.Tools.Services;
 using Godot;
 
+using Cthangover.Mods.Interface.Theming;
 namespace Cthangover.Core.UI.Tool.ScenarioEditor
 {
+    /// <summary>Cross-scene graph of all scenario files: a GraphEdit of scene nodes linked by switch targets, with a detail panel for the selected scenario.</summary>
     public partial class ScenarioGraphView : HSplitContainer
     {
         private GraphEdit _graph;
@@ -60,6 +62,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             panel.AddChild(_infoLabel);
         }
 
+        /// <summary>Rebuilds the graph nodes and edges, preserving the nodes' saved canvas positions.</summary>
         public void Populate(SceneGraphData data)
         {
             var savedPositions = SaveNodePositions();

@@ -4,6 +4,7 @@ using Godot;
 
 namespace Cthangover.Core.UI.Tool.ScenarioEditor
 {
+    /// <summary>Row of background thumbnails referenced by the scenario in the active text tab.</summary>
     public partial class ScenarioThumbnailPanel : ScrollContainer
     {
         private HBoxContainer _thumbContainer;
@@ -13,6 +14,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             _thumbContainer = GetNode<HBoxContainer>("ThumbContainer");
         }
 
+        /// <summary>Loads the background thumbnails referenced by the given scenario text (missing ones render as placeholders).</summary>
         public void Load(string text)
         {
             Clear();
@@ -57,6 +59,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             }
         }
 
+        /// <summary>Removes every thumbnail from the row.</summary>
         public new void Clear()
         {
             foreach (var c in _thumbContainer.GetChildren())

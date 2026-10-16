@@ -8,11 +8,13 @@ using Cthangover.Core.Scenes;
 using Cthangover.Core.Settings;
 using Cthangover.Core.UI;
 using Cthangover.Core.UI.Theming;
+using Cthangover.Mods.Map;
 using Cthangover.Core.UI.Tool;
 using Cthangover.Core.Utils;
 using Cthangover.Tools.Services;
 using Godot;
 
+using Cthangover.Mods.Interface.Tool;
 namespace Cthangover.Tools.MapEditor
 {
     /// <summary>

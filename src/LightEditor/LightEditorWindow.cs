@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using Cthangover.Core.Factories.Impls;
-using Cthangover.Core.UI.Lights;
+using Cthangover.Mods.Time;
 using Cthangover.Core.UI.Theming;
 using Cthangover.Core.Utils;
 using Cthangover.Tools.Services;
 using Godot;
 
+using Cthangover.Mods.Interface.Tool;
 namespace Cthangover.Core.UI.Tool.LightEditor
 {
     /// <summary>

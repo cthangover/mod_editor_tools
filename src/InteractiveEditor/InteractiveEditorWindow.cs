@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Cthangover.Core.Interactive;
 using Cthangover.Core.Mods;
@@ -10,8 +10,15 @@ using Cthangover.Core.Utils;
 using Cthangover.Tools.Services;
 using Godot;
 
+using Cthangover.Mods.Interface.Tool;
 namespace Cthangover.Tools.InteractiveEditor
 {
+	/// <summary>
+	/// Tool window for creating and editing interactive object definitions:
+	/// renders the selected background with draggable collider handles
+	/// (rect, circle, polygon), edits the definition's fields, and writes the
+	/// resulting JSON back into a mod directory.
+	/// </summary>
 	public partial class InteractiveEditorWindow : ToolWindow
 	{
 		private static readonly Color _rectColor = UiTokens.Alpha(UiTokens.Success, 0.6f);
