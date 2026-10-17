@@ -36,6 +36,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
         private Label _filePathLabel;
 
         private bool _playActive;
+        private string _returnRoute;
         private CanvasLayer _stopOverlay;
 
         public ScenarioEditorWindow() : base("tools/scenario_editor/title")
@@ -294,6 +295,13 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
             Visible = false;
 
+            // The screen the editor was opened from (the novel_editor hub, a
+            // mod menu) is freed by the shell load below; remember its route so
+            // the play-test returns there instead of to the engine's main menu.
+            var sceneService = GetNodeOrNull<GodotSceneService>("/root/GodotSceneService");
+            var current = sceneService?.CurrentGodotSceneName;
+            _returnRoute = !string.IsNullOrEmpty(current) && SceneRouteRegistry.TryGet(current, out _) ? current : null;
+
             _stopOverlay = CreateStopOverlay();
             var tree = Godot.Engine.GetMainLoop() as SceneTree;
             tree?.Root.AddChild(_stopOverlay);
@@ -305,7 +313,6 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                 sceneManager.PendingSceneName = metadata.Scene;
             }
 
-            var sceneService = GetNodeOrNull<GodotSceneService>("/root/GodotSceneService");
             sceneService?.LoadShell();
 
             _playActive = true;
@@ -329,7 +336,11 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             }
 
             var sceneService = GetNodeOrNull<GodotSceneService>("/root/GodotSceneService");
-            sceneService?.SwitchToMenu();
+            if (_returnRoute != null && SceneRouteRegistry.TryGet(_returnRoute, out var route))
+                sceneService?.SwitchRoute(route);
+            else
+                sceneService?.SwitchToMenu();
+            _returnRoute = null;
             SetStatus(ToolUi.Tr("tools/scenario_editor/play_stopped"));
         }
 
