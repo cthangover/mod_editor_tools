@@ -5,7 +5,9 @@ using Cthangover.Core.UI.Theming;
 using Cthangover.Core.Utils;
 using Godot;
 
+using Cthangover.Mods.Interface.Theming;
 using Cthangover.Mods.Interface.Tool;
+using Cthangover.Tools.Common;
 namespace Cthangover.Core.UI.Tool.SceneBuilder
 {
     /// <summary>
@@ -33,14 +35,15 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         private Timer _autosaveTimer;
         private Node _selectedNode;
         private TscnFileProps _fileProps = TscnFileProps.Build(null);
-        private TextEdit _tscnEditor;
-        private Button _reloadBtn;
-        private Button _saveBtn;
-        private Button _refreshBtn;
+        private CodeEdit _tscnEditor;
         private OptionButton _newNodeTypeDropdown;
-        private Button _addNodeBtn;
-        private Button _deleteNodeBtn;
-        private RichTextLabel _outputLabel;
+        private int _shownBase;
+        private int _shownMod;
+        private int _shownScene;
+        private bool _loadingText;
+
+        /// <summary>Logical game resolution (project.godot) the preview canvas is laid out at.</summary>
+        private static readonly Vector2I GameResolution = new(1920, 1024);
 
         /// <summary>Curated palette for node creation — common Control classes the runtime builder instantiates via ClassDB.</summary>
         private static readonly string[] CreatableTypes =
@@ -64,6 +67,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             PopulateBaseList();
             PopulateModList();
             RebuildPreview();
+            SetHint(ToolUi.Tr("tools/scene_builder/hint"));
         }
 
         private void BuildUI()
@@ -74,84 +78,121 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             var toolbar = CreateToolbar();
             outerVBox.AddChild(toolbar);
 
-            toolbar.AddChild(new Label { Text = TranslationServer.Translate("tools/scene_builder/base_scene") });
+            _baseDropdown = Dropdown(toolbar, "tools/scene_builder/base_scene", OnBaseSelected);
+            _modDropdown = Dropdown(toolbar, "tools/scene_builder/mod", OnModSelected);
+            _sceneDropdown = Dropdown(toolbar, "tools/scene_builder/scene", OnSceneSelected);
+            toolbar.AddChild(ToolUi.Divider());
+            toolbar.AddChild(ToolUi.Button("tools/common/save", OnSavePressed, ButtonKind.Primary, "tools/scene_builder/save_tip"));
+            toolbar.AddChild(ToolUi.Button("tools/scene_builder/reload", OnReloadPressed, ButtonKind.Secondary, "tools/scene_builder/reload_tip"));
 
-            _baseDropdown = new OptionButton();
-            _baseDropdown.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            _baseDropdown.ItemSelected += OnBaseSelected;
-            toolbar.AddChild(_baseDropdown);
+            var mainSplit = new HSplitContainer
+            {
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill
+            };
+            outerVBox.AddChild(mainSplit);
 
-            toolbar.AddChild(new Label { Text = TranslationServer.Translate("tools/scene_builder/mod") });
+            mainSplit.AddChild(BuildHierarchyPanel());
 
-            _modDropdown = new OptionButton();
-            _modDropdown.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            _modDropdown.ItemSelected += OnModSelected;
-            toolbar.AddChild(_modDropdown);
+            var centerSplit = new HSplitContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            mainSplit.AddChild(centerSplit);
+            centerSplit.AddChild(BuildPreview());
+            centerSplit.AddChild(BuildSidePanel());
 
-            toolbar.AddChild(new Label { Text = TranslationServer.Translate("tools/scene_builder/scene") });
+            _autosaveTimer = new Timer { OneShot = true, WaitTime = 0.4 };
+            _autosaveTimer.Timeout += OnAutosaveTimeout;
+            AddChild(_autosaveTimer);
+        }
 
-            _sceneDropdown = new OptionButton();
-            _sceneDropdown.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            _sceneDropdown.ItemSelected += OnSceneSelected;
-            toolbar.AddChild(_sceneDropdown);
+        private static OptionButton Dropdown(HBoxContainer toolbar, string tooltipKey, Action<long> selected)
+        {
+            var dropdown = new OptionButton
+            {
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                TooltipText = ToolUi.Tr(tooltipKey),
+                FitToLongestItem = false
+            };
+            dropdown.ItemSelected += index => selected(index);
+            toolbar.AddChild(dropdown);
+            return dropdown;
+        }
 
-            _reloadBtn = new Button { Text = TranslationServer.Translate("tools/scene_builder/reload") };
-            _reloadBtn.Pressed += OnReloadPressed;
-            toolbar.AddChild(_reloadBtn);
+        private Control BuildHierarchyPanel()
+        {
+            var column = new VBoxContainer();
+            column.AddThemeConstantOverride("separation", UiTokens.Space2);
+            var panel = new PanelContainer { CustomMinimumSize = new Vector2(280, 0) };
+            panel.AddThemeStyleboxOverride("panel", SidebarBox());
+            panel.AddChild(column);
 
-            var mainHBox = new HBoxContainer();
-            mainHBox.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            mainHBox.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-            outerVBox.AddChild(mainHBox);
+            column.AddChild(ToolUi.Section("tools/scene_builder/hierarchy"));
 
-            var leftVBox = new VBoxContainer();
-            leftVBox.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            leftVBox.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-            var leftPanel = CreateSidebar(leftVBox);
-            mainHBox.AddChild(leftPanel);
+            var actions = new HBoxContainer();
+            actions.AddThemeConstantOverride("separation", UiTokens.Space1);
+            column.AddChild(actions);
 
-            var hierarchyHeader = new HBoxContainer();
-            var hierarchyLabel = new Label { Text = TranslationServer.Translate("tools/scene_builder/hierarchy") };
-            hierarchyLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            hierarchyHeader.AddChild(hierarchyLabel);
-
-            _newNodeTypeDropdown = new OptionButton();
-            _newNodeTypeDropdown.TooltipText = TranslationServer.Translate("tools/scene_builder/add_node_tip");
+            _newNodeTypeDropdown = new OptionButton
+            {
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                TooltipText = ToolUi.Tr("tools/scene_builder/node_type_tip")
+            };
             foreach (var t in CreatableTypes)
                 _newNodeTypeDropdown.AddItem(t);
             _newNodeTypeDropdown.Selected = 0;
-            hierarchyHeader.AddChild(_newNodeTypeDropdown);
+            actions.AddChild(_newNodeTypeDropdown);
 
-            _addNodeBtn = new Button { Text = "+" };
-            _addNodeBtn.TooltipText = TranslationServer.Translate("tools/scene_builder/add_node_tip");
-            _addNodeBtn.Pressed += OnAddNodePressed;
-            hierarchyHeader.AddChild(_addNodeBtn);
+            var addBtn = UiKit.IconButton("+", ToolUi.Tr("tools/scene_builder/add_node_tip"));
+            addBtn.Pressed += OnAddNodePressed;
+            actions.AddChild(addBtn);
 
-            _deleteNodeBtn = new Button { Text = "-" };
-            _deleteNodeBtn.TooltipText = TranslationServer.Translate("tools/scene_builder/delete_node_tip");
-            _deleteNodeBtn.Pressed += OnDeleteNodePressed;
-            hierarchyHeader.AddChild(_deleteNodeBtn);
+            var deleteBtn = UiKit.IconButton("\u2212", ToolUi.Tr("tools/scene_builder/delete_node_tip"));
+            deleteBtn.Pressed += OnDeleteNodePressed;
+            actions.AddChild(deleteBtn);
 
-            _refreshBtn = new Button();
-            _refreshBtn.Text = TranslationServer.Translate("tools/scene_builder/refresh");
-            _refreshBtn.Pressed += OnRefreshPressed;
-            hierarchyHeader.AddChild(_refreshBtn);
+            var refreshBtn = UiKit.IconButton("\u27F3", ToolUi.Tr("tools/scene_builder/refresh_tip"));
+            refreshBtn.Pressed += OnRefreshPressed;
+            actions.AddChild(refreshBtn);
 
-            leftVBox.AddChild(hierarchyHeader);
-
-            _hierarchyTree = new Tree();
-            _hierarchyTree.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-            _hierarchyTree.HideRoot = true;
+            _hierarchyTree = new Tree
+            {
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+                HideRoot = true
+            };
             _hierarchyTree.CellSelected += OnTreeCellSelected;
-            leftVBox.AddChild(_hierarchyTree);
+            column.AddChild(_hierarchyTree);
+            column.AddChild(ToolUi.Hint(ToolUi.Tr("tools/scene_builder/hierarchy_hint")));
+            return panel;
+        }
 
-            var previewContainer = new PanelContainer();
-            previewContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            previewContainer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-            mainHBox.AddChild(previewContainer);
+        /// <summary>
+        /// Preview canvas. The sub-viewport lays the scene out at the game
+        /// resolution (2D size override) and is scaled to fit inside an
+        /// aspect-locked box, so anchors and sizes look exactly as in the game
+        /// whatever the window size. The selection overlay shares the box, so
+        /// its coordinate mapping is a plain scale.
+        /// </summary>
+        private Control BuildPreview()
+        {
+            var previewContainer = new PanelContainer
+            {
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill
+            };
+            previewContainer.AddThemeStyleboxOverride("panel", UiKit.Frame(UiTokens.RadiusMd, UiTokens.Well, UiTokens.Line));
 
-            _viewport = new SubViewport();
-            _viewport.Size = new Vector2I(1920, 1080);
+            var aspect = new AspectRatioContainer
+            {
+                Ratio = (float)GameResolution.X / GameResolution.Y,
+                StretchMode = AspectRatioContainer.StretchModeEnum.Fit
+            };
+            previewContainer.AddChild(aspect);
+
+            _viewport = new SubViewport
+            {
+                Size = GameResolution,
+                Size2DOverride = GameResolution,
+                Size2DOverrideStretch = true
+            };
 
             var clickCatcher = new Control();
             clickCatcher.MouseFilter = Control.MouseFilterEnum.Stop;
@@ -161,97 +202,64 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             clickCatcher.GuiInput += OnViewportClick;
             _viewport.AddChild(clickCatcher);
 
-            var viewportContainer = new SubViewportContainer();
-            viewportContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            viewportContainer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-            viewportContainer.Stretch = true;
-            viewportContainer.StretchShrink = 1;
+            var viewportContainer = new SubViewportContainer { Stretch = true };
             viewportContainer.AddChild(_viewport);
-            previewContainer.AddChild(viewportContainer);
+            aspect.AddChild(viewportContainer);
 
             _selectionOverlay = new SelectionOverlay();
-            previewContainer.AddChild(_selectionOverlay);
-            _selectionOverlay.Setup(_viewport, viewportContainer);
+            aspect.AddChild(_selectionOverlay);
+            _selectionOverlay.Setup(_viewport, viewportContainer, GameResolution);
             _selectionOverlay.PickRequested += OnOverlayPick;
             _selectionOverlay.BatchCommitted += OnOverlayBatchCommitted;
             _selectionOverlay.EnsureConstructed();
 
-            _autosaveTimer = new Timer { OneShot = true, WaitTime = 0.4 };
-            _autosaveTimer.Timeout += OnAutosaveTimeout;
-            AddChild(_autosaveTimer);
+            return previewContainer;
+        }
 
-            // Compact tabbed sidebar: inspector and tscn source share one column,
-            // the output strip stays below the tabs so errors are always visible.
-            var rightVBox = new VBoxContainer();
-            rightVBox.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            rightVBox.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-            var rightPanel = CreateSidebar(rightVBox, 360);
-            mainHBox.AddChild(rightPanel);
+        /// <summary>Inspector and tscn source share one tabbed column.</summary>
+        private Control BuildSidePanel()
+        {
+            var panel = new PanelContainer { CustomMinimumSize = new Vector2(380, 0) };
+            panel.AddThemeStyleboxOverride("panel", SidebarBox());
 
-            _sideTabs = new TabContainer();
-            _sideTabs.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            _sideTabs.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-            rightVBox.AddChild(_sideTabs);
-
-            var inspectorTab = new VBoxContainer
+            _sideTabs = new TabContainer
             {
-                Name = TranslationServer.Translate("tools/scene_builder/tab_inspector"),
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                 SizeFlagsVertical = Control.SizeFlags.ExpandFill
             };
-            _sideTabs.AddChild(inspectorTab);
+            panel.AddChild(_sideTabs);
 
-            _inspector = new InspectorPanel();
-            inspectorTab.AddChild(_inspector);
+            var inspectorScroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+            _sideTabs.AddChild(inspectorScroll);
+            _sideTabs.SetTabTitle(0, ToolUi.Tr("tools/scene_builder/tab_inspector"));
+
+            _inspector = new InspectorPanel { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            inspectorScroll.AddChild(_inspector);
             _inspector.PropertyEdited += OnInspectorPropertyEdited;
             _inspector.EnsureConstructed();
-            _inspector.ShowMessage(TranslationServer.Translate("tools/scene_builder/inspector_select"));
+            _inspector.ShowMessage(ToolUi.Tr("tools/scene_builder/inspector_select"));
 
+            // Titles are set explicitly: a node name cannot hold "." (".tscn").
             var tscnTab = new VBoxContainer
             {
-                Name = TranslationServer.Translate("tools/scene_builder/tab_tscn"),
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                 SizeFlagsVertical = Control.SizeFlags.ExpandFill
             };
             _sideTabs.AddChild(tscnTab);
+            _sideTabs.SetTabTitle(1, ToolUi.Tr("tools/scene_builder/tab_tscn"));
 
-            _tscnEditor = new TextEdit();
-            _tscnEditor.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            _tscnEditor.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-            _tscnEditor.WrapMode = TextEdit.LineWrappingMode.None;
-            _tscnEditor.AddThemeFontOverride("font", GetMonospaceFont());
-            _tscnEditor.TextChanged += () => SetDirty();
+            _tscnEditor = ToolUi.Code();
+            _tscnEditor.TextChanged += OnTscnTextChanged;
             tscnTab.AddChild(_tscnEditor);
+            tscnTab.AddChild(ToolUi.Hint(ToolUi.Tr("tools/scene_builder/tscn_hint")));
 
-            _saveBtn = new Button();
-            _saveBtn.Text = TranslationServer.Translate("tools/scene_builder/save");
-            _saveBtn.Pressed += OnSavePressed;
-            tscnTab.AddChild(_saveBtn);
-
-            var outputHeader = new HBoxContainer();
-            var outputLabel = new Label { Text = TranslationServer.Translate("tools/scene_builder/output") };
-            outputLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            outputHeader.AddChild(outputLabel);
-
-            var clearOutputBtn = new Button { Text = TranslationServer.Translate("tools/scene_builder/clear") };
-            clearOutputBtn.Pressed += () => _outputLabel.Text = "";
-            outputHeader.AddChild(clearOutputBtn);
-
-            rightVBox.AddChild(outputHeader);
-
-            _outputLabel = new RichTextLabel();
-            _outputLabel.BbcodeEnabled = true;
-            _outputLabel.FitContent = false;
-            _outputLabel.ScrollActive = true;
-            _outputLabel.ScrollFollowing = true;
-            _outputLabel.CustomMinimumSize = new Vector2(0, 70);
-            rightVBox.AddChild(_outputLabel);
+            return panel;
         }
 
         private void PopulateBaseList()
         {
             _baseDropdown.Clear();
-            _baseDropdown.AddItem(TranslationServer.Translate("tools/scene_builder/empty_scene"));
+            _baseDropdown.AddItem(ToolUi.Tr("tools/scene_builder/empty_scene"));
             _baseScenes = _controller.GetBaseSceneList();
             foreach (var s in _baseScenes)
                 _baseDropdown.AddItem(s.Display);
@@ -261,7 +269,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         private void PopulateModList()
         {
             _modDropdown.Clear();
-            _modDropdown.AddItem(TranslationServer.Translate("tools/scene_builder/select_mod"));
+            _modDropdown.AddItem(ToolUi.Tr("tools/scene_builder/select_mod"));
             _modScenes = _controller.GetModSceneIndex();
             _mods = _modScenes.Select(s => s.ModId).Distinct().ToList();
             foreach (var modId in _mods)
@@ -269,7 +277,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             _modDropdown.Selected = 0;
 
             _sceneDropdown.Clear();
-            _sceneDropdown.AddItem(TranslationServer.Translate("tools/scene_builder/select_scene"));
+            _sceneDropdown.AddItem(ToolUi.Tr("tools/scene_builder/select_scene"));
             _sceneDropdown.Selected = 0;
         }
 
@@ -284,7 +292,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             }
 
             _sceneDropdown.Clear();
-            _sceneDropdown.AddItem(TranslationServer.Translate("tools/scene_builder/select_scene"));
+            _sceneDropdown.AddItem(ToolUi.Tr("tools/scene_builder/select_scene"));
             foreach (var s in _currentModScenes)
                 _sceneDropdown.AddItem(s.Name);
             _sceneDropdown.Selected = 0;
@@ -303,6 +311,10 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
 
         private void RebuildPreview()
         {
+            _shownBase = _baseDropdown.Selected;
+            _shownMod = _modDropdown.Selected;
+            _shownScene = _sceneDropdown.Selected;
+
             var baseIdx = (int)_baseDropdown.Selected;
             if (baseIdx <= 0 || baseIdx - 1 >= _baseScenes.Count)
                 _controller.LoadEmptyScene(_viewport);
@@ -317,7 +329,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             RefreshFileSnapshot();
             _selectedNode = null;
             _selectionOverlay.Track(null);
-            _inspector.ShowMessage(TranslationServer.Translate("tools/scene_builder/inspector_select"));
+            _inspector.ShowMessage(ToolUi.Tr("tools/scene_builder/inspector_select"));
         }
 
         /// <summary>Re-parses the current editor text into the file-truth property snapshot used by the inspector.</summary>
@@ -340,43 +352,93 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
 
         private void ShowTscnText()
         {
+            _loadingText = true;
             _tscnEditor.Text = "";
             if (TryGetSelectedModScene(out var scene))
             {
                 var text = _controller.ReadSceneText(scene.ModId, scene.RelativePath);
                 _tscnEditor.Text = text ?? "";
             }
+            _tscnEditor.ClearUndoHistory();
+            _loadingText = false;
+            MarkClean();
+        }
+
+        /// <summary>Hand edits of the source mark the window dirty; they reach the preview on save.</summary>
+        private void OnTscnTextChanged()
+        {
+            if (!_loadingText)
+                SetDirty();
         }
 
         private void OnBaseSelected(long index)
         {
-            RebuildPreview();
+            RunDiscardingChanges(RebuildPreview, RestoreDropdowns);
         }
 
         private void OnModSelected(long index)
         {
-            var modId = index == 0 ? null : _mods[(int)index - 1];
-            PopulateSceneListForMod(modId);
-            RebuildPreview();
+            RunDiscardingChanges(() =>
+            {
+                var modId = index == 0 ? null : _mods[(int)index - 1];
+                PopulateSceneListForMod(modId);
+                RebuildPreview();
+            }, RestoreDropdowns);
         }
 
         private void OnSceneSelected(long index)
         {
-            RebuildPreview();
+            RunDiscardingChanges(RebuildPreview, RestoreDropdowns);
+        }
+
+        /// <summary>Rolls the selectors back to the scene still shown after a refused switch.</summary>
+        private void RestoreDropdowns()
+        {
+            _baseDropdown.Select(_shownBase);
+            _modDropdown.Select(_shownMod);
+            PopulateSceneListForMod(_shownMod <= 0 ? null : _mods[_shownMod - 1]);
+            _sceneDropdown.Select(_shownScene);
         }
 
         private void OnReloadPressed()
         {
-            if (TryGetSelectedModScene(out var scene))
-                _controller.InvalidateScene(scene.RelativePath);
+            RunDiscardingChanges(() =>
+            {
+                if (TryGetSelectedModScene(out var scene))
+                    _controller.InvalidateScene(scene.RelativePath);
 
-            RebuildPreview();
-            ShowOutput(TranslationServer.Translate("tools/scene_builder/reloaded"), false);
+                RebuildPreview();
+                ShowOutput(ToolUi.Tr("tools/scene_builder/reloaded"), false);
+            });
         }
 
+        /// <summary>Ctrl+S: save the source and rebuild the preview from it.</summary>
+        protected override void OnSaveShortcut() => OnSavePressed();
+
+        /// <summary>Delete removes the selected mod node after a confirmation.</summary>
+        protected override bool HandleKey(InputEventKey key)
+        {
+            if (key.Keycode != Key.Delete || _selectedNode == null || !_controller.IsEditableModNode(_selectedNode))
+                return false;
+
+            ShowConfirm("tools/scene_builder/delete_node_title", "tools/scene_builder/delete_node_confirm", OnDeleteNodePressed);
+            return true;
+        }
+
+        /// <summary>
+        /// Saves the source and, when it was edited by hand, rebuilds the preview
+        /// from the saved file — hand edits do not reach the live preview
+        /// otherwise (inspector and overlay edits are applied live already).
+        /// </summary>
         private void OnSavePressed()
         {
-            SaveCurrentText(false);
+            var handEdited = _dirty;
+            if (!SaveCurrentText(false) || !handEdited || !TryGetSelectedModScene(out var scene))
+                return;
+
+            _controller.InvalidateScene(scene.RelativePath);
+            RebuildPreview();
+            ShowOutput(ToolUi.Tr("tools/scene_builder/saved_rebuilt"), false);
         }
 
         /// <summary>
@@ -389,20 +451,20 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             if (!TryGetSelectedModScene(out var scene))
             {
                 if (!auto)
-                    ShowOutput(TranslationServer.Translate("tools/scene_builder/error_no_scene"), true);
+                    ShowOutput(ToolUi.Tr("tools/scene_builder/error_no_scene"), true);
                 return false;
             }
 
             if (_controller.SaveSceneText(scene.ModId, scene.RelativePath, _tscnEditor.Text))
             {
                 MarkClean();
-                ShowOutput(TranslationServer.Translate(auto
+                ShowOutput(ToolUi.Tr(auto
                     ? "tools/scene_builder/autosaved"
                     : "tools/scene_builder/saved_ok"), false);
                 return true;
             }
 
-            ShowOutput(TranslationServer.Translate("tools/scene_builder/error_save"), true);
+            ShowOutput(ToolUi.Tr("tools/scene_builder/error_save"), true);
             GameLogger.Log("SCENE_BUILDER",
                 $"save failed: mod='{scene.ModId}' path='{scene.RelativePath}' (zip mods are read-only)",
                 LogLevel.Error);
@@ -466,7 +528,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             }
             else
             {
-                _inspector.ShowMessage(TranslationServer.Translate("tools/scene_builder/inspector_readonly"));
+                _inspector.ShowMessage(ToolUi.Tr("tools/scene_builder/inspector_readonly"));
                 _selectionOverlay.Track(null);
             }
         }
@@ -501,7 +563,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         {
             if (!TryGetSelectedModScene(out var scene))
             {
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/error_no_scene"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/error_no_scene"), true);
                 return;
             }
 
@@ -509,14 +571,14 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             var parent = ResolveAddParent();
             if (parent == null)
             {
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/error_no_scene"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/error_no_scene"), true);
                 return;
             }
 
             var created = _controller.CreateUniqueChild(parent, typeName);
             if (created == null)
             {
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/err_add_failed"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/err_add_failed"), true);
                 GameLogger.Log("SCENE_BUILDER", $"ClassDB.Instantiate failed for '{typeName}'", LogLevel.Error);
                 return;
             }
@@ -527,7 +589,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             {
                 created.GetParent().RemoveChild(created);
                 created.QueueFree();
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/err_add_parent_missing"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/err_add_parent_missing"), true);
                 GameLogger.Log("SCENE_BUILDER",
                     $"node insert rejected: parent section '{parentPath}' absent from file", LogLevel.Warning);
                 return;
@@ -578,19 +640,19 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             var node = _selectedNode;
             if (node == null || !_controller.IsEditableModNode(node))
             {
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/err_del_none"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/err_del_none"), true);
                 return;
             }
             if (node == _controller.GetModRoot())
             {
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/err_del_root"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/err_del_root"), true);
                 return;
             }
 
             var path = _controller.GetModNodePath(node);
             if (!_controller.DeleteModNode(node))
             {
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/err_del_none"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/err_del_none"), true);
                 return;
             }
 
@@ -602,14 +664,14 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             }
             else
             {
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/inspector_missing_section"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/inspector_missing_section"), true);
                 GameLogger.Log("SCENE_BUILDER",
                     $"subtree remove failed: section '{path}' absent from file", LogLevel.Warning);
             }
 
             _selectedNode = null;
             _selectionOverlay.Track(null);
-            _inspector.ShowMessage(TranslationServer.Translate("tools/scene_builder/inspector_select"));
+            _inspector.ShowMessage(ToolUi.Tr("tools/scene_builder/inspector_select"));
             _controller.BuildHierarchy(_hierarchyTree);
         }
 
@@ -622,14 +684,14 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         {
             if (!TryGetSelectedModScene(out var scene))
             {
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/error_no_scene"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/error_no_scene"), true);
                 return;
             }
 
             var nodePath = _controller.GetModNodePath(node);
             if (nodePath == null)
             {
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/inspector_readonly"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/inspector_readonly"), true);
                 GameLogger.Log("SCENE_BUILDER", $"batch rejected: '{node.Name}' is not an editable mod node", LogLevel.Warning);
                 return;
             }
@@ -640,14 +702,14 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
                 var serialized = TscnValueFormatter.Format(pair.Value);
                 if (serialized == null)
                 {
-                    ShowOutput(TranslationServer.Translate("tools/scene_builder/inspector_bad_value"), true);
+                    ShowOutput(ToolUi.Tr("tools/scene_builder/inspector_bad_value"), true);
                     GameLogger.Log("SCENE_BUILDER", $"unserializable value for '{pair.Key}'", LogLevel.Warning);
                     continue;
                 }
 
                 if (!TscnTextSurgery.TryUpsertProperty(text, nodePath, pair.Key, serialized, out text))
                 {
-                    ShowOutput(TranslationServer.Translate("tools/scene_builder/inspector_missing_section"), true);
+                    ShowOutput(ToolUi.Tr("tools/scene_builder/inspector_missing_section"), true);
                     GameLogger.Log("SCENE_BUILDER",
                         $"section not found: path='{nodePath}' key='{pair.Key}'", LogLevel.Warning);
                 }
@@ -670,14 +732,14 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         {
             if (!TryGetSelectedModScene(out var scene))
             {
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/error_no_scene"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/error_no_scene"), true);
                 return;
             }
 
             var serialized = TscnValueFormatter.Format(value);
             if (serialized == null)
             {
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/inspector_bad_value"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/inspector_bad_value"), true);
                 GameLogger.Log("SCENE_BUILDER", $"unserializable value for '{key}'", LogLevel.Warning);
                 return;
             }
@@ -685,14 +747,14 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             var nodePath = _controller.GetModNodePath(node);
             if (nodePath == null)
             {
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/inspector_readonly"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/inspector_readonly"), true);
                 GameLogger.Log("SCENE_BUILDER", $"edit rejected: '{node.Name}' is not an editable mod node", LogLevel.Warning);
                 return;
             }
 
             if (!TscnTextSurgery.TryUpsertProperty(_tscnEditor.Text, nodePath, key, serialized, out var updated))
             {
-                ShowOutput(TranslationServer.Translate("tools/scene_builder/inspector_missing_section"), true);
+                ShowOutput(ToolUi.Tr("tools/scene_builder/inspector_missing_section"), true);
                 GameLogger.Log("SCENE_BUILDER",
                     $"section not found: path='{nodePath}' key='{key}'", LogLevel.Warning);
                 return;
@@ -716,11 +778,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
 
         private void ShowOutput(string text, bool isError)
         {
-            if (_outputLabel == null)
-                return;
-
-            var color = isError ? "red" : "green";
-            _outputLabel.Text = $"[color={color}]{text}[/color]";
+            SetStatus(text, isError ? ToolStatusKind.Error : ToolStatusKind.Ok);
         }
     }
 }

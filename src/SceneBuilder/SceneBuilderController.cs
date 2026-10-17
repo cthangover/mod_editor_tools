@@ -251,8 +251,9 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
 
         /// <summary>
         /// Recursively walks the loaded scene tree and populates the given
-        /// <see cref="Tree"/> control with nodes labelled <c>Name (Type)</c>.
-        /// Skips the internal highlight rect.
+        /// <see cref="Tree"/> control with nodes labelled <c>Name · Class</c>:
+        /// the mod scene root in gold, editable mod nodes in ink, read-only
+        /// base-scene nodes faint. Skips the internal highlight rect.
         /// </summary>
         public void BuildHierarchy(Tree tree)
         {
@@ -271,9 +272,12 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         private void AddNodeToTree(Tree tree, TreeItem parent, Node node)
         {
             var item = tree.CreateItem(parent);
-            var typeName = node.GetType().Name;
-            item.SetText(0, $"{node.Name} ({typeName})");
+            item.SetText(0, $"{node.Name}  ·  {node.GetClass()}");
             item.SetSelectable(0, true);
+            // Mod-scene nodes are the editable ones; base-scene nodes stay faint.
+            item.SetCustomColor(0, IsEditableModNode(node) ? UiTokens.Ink : UiTokens.Faint);
+            if (node == _modRoot)
+                item.SetCustomColor(0, UiTokens.AccentBright);
 
             _nodeToItem[node] = item;
             _itemToNode[item] = node;
@@ -425,8 +429,9 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         /// <summary>Hides the node highlight overlay and resets its colour.</summary>
         public void HideHighlight()
         {
-            if (_highlight != null)
-                _highlight.Visible = false;
+            if (_highlight == null)
+                return;
+            _highlight.Visible = false;
             _highlight.Color = UiTokens.Alpha(UiTokens.Accent, 0.35f);
         }
     }

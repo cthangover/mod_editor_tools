@@ -9,10 +9,11 @@ theme_override_constants/separation = 6
 
 [node name="Scroll" type="ScrollContainer" parent="."]
 size_flags_vertical = 3
-horizontal_scroll_mode = 3
+horizontal_scroll_mode = 0
 
 [node name="VBox" type="VBoxContainer" parent="Scroll"]
-theme_override_constants/separation = 8
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
 
 [node name="HintScene" type="Label" parent="Scroll/VBox"]
 

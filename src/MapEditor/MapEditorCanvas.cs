@@ -3,38 +3,34 @@ using System.Collections.Generic;
 using Cthangover.Core.Mods.Resolvers;
 using Cthangover.Core.UI.Theming;
 using Cthangover.Mods.Map;
+using Cthangover.Tools.Common;
 using Godot;
 
 namespace Cthangover.Tools.MapEditor
 {
     /// <summary>
-    /// Interactive preview of the edited map: draws the background with the
-    /// exact aspect-preserving layout used by <c>MapWidget</c>, overlays every
-    /// zone polygon, marker and text label, and hosts the draggable handles.
-    /// Implements the two editor modes:
+    /// Interactive preview of the edited map: the background (laid out by
+    /// <see cref="BackgroundCanvas"/> exactly like <c>MapWidget</c>), every zone
+    /// polygon, marker and text label, and the draggable handles of the
+    /// selected zone. Two modes:
     /// <list type="bullet">
-    /// <item><b>select</b> — clicking picks the topmost zone (polygon first,
+    /// <item><b>select</b> — a click picks the topmost zone (polygon first,
     /// then marker/label dots); handles move vertices and positions;</item>
-    /// <item><b>draw</b> — clicking appends polygon vertices to the selected
-    /// region and double-click finishes the polygon and returns to select
-    /// mode.</item>
+    /// <item><b>draw</b> — clicks append polygon vertices to the selected
+    /// region while a dashed rubber band shows the next edge; a double-click
+    /// (or Enter/Esc via the window) finishes the polygon.</item>
     /// </list>
-    /// Right-click deletes a polygon vertex in either mode: the vertex nearest
-    /// to the pointer. While drawing, a click that misses every vertex removes
-    /// the last one ("undo point"); in select mode only a targeted vertex is
-    /// deleted.
-    /// The canvas owns no data: it reads and mutates
-    /// <see cref="MapEditorController"/> and raises <see cref="Changed"/> so the
-    /// window can refresh the sidebar and JSON preview. Drawing is connected
-    /// through the "draw" signal and input through the GuiInput event, because
-    /// virtual method overrides are unreliable in mod assemblies.
+    /// Right-click deletes the polygon vertex nearest to the pointer; while
+    /// drawing, a click that misses every vertex removes the last one ("undo
+    /// point"), in select mode only a targeted vertex is deleted.
     /// <para/>
-    /// Zone fills and outlines are painted through <see cref="MapZoneStyle"/> —
-    /// the same definition the game's <c>MapZonesLayer</c> and the window's
-    /// game-like preview use — so a zone the author sees here and the same zone
-    /// on the live map are guaranteed to look identical.
+    /// The canvas owns no data: it reads and mutates
+    /// <see cref="MapEditorController"/> and raises <see cref="Changed"/> so
+    /// the window can refresh the sidebar and JSON. Zone fills and outlines are
+    /// painted through <see cref="MapZoneStyle"/> — the definition the game's
+    /// <c>MapZonesLayer</c> uses — so the editor and the live map look the same.
     /// </summary>
-    public partial class MapEditorCanvas : Control
+    public partial class MapEditorCanvas : BackgroundCanvas
     {
         /// <summary>Mode constant: clicking selects zones and drags handles.</summary>
         public const string ModeSelect = "select";
@@ -42,129 +38,97 @@ namespace Cthangover.Tools.MapEditor
         /// <summary>Mode constant: clicking appends polygon vertices.</summary>
         public const string ModeDraw = "draw";
 
+        /// <summary>Handle index of the marker position.</summary>
+        public const int MarkerHandle = -2;
+
+        /// <summary>Handle index of the label position.</summary>
+        public const int LabelHandle = -3;
+
+        private const float PickRadius = 24f;
+
         private static readonly Color VertexColor = MapZoneStyle.VertexHandle;
         private static readonly Color MarkerColor = MapZoneStyle.MarkerHandle;
         private static readonly Color LabelColor = MapZoneStyle.LabelHandle;
 
-        private readonly List<MapEditorHandle> _handles = new();
-
         /// <summary>Data being edited; set once by the window.</summary>
         public MapEditorController Controller;
-
-        /// <summary>Reference background; <c>null</c> falls back to a flat rectangle.</summary>
-        public Texture2D Background;
 
         /// <summary>Current interaction mode, one of <see cref="ModeSelect"/> / <see cref="ModeDraw"/>.</summary>
         public string Mode { get; private set; } = ModeSelect;
 
-        /// <summary>Raised whenever the canvas mutates controller data (drag, draw, pick).</summary>
+        /// <summary>Raised whenever the canvas mutates controller data (drag, draw, delete).</summary>
         public event Action Changed;
 
         /// <summary>Raised with the newly picked zone index (-1 for empty space).</summary>
         public event Action<int> ZonePicked;
 
+        /// <summary>Raised when the canvas leaves draw mode on its own (double-click finishing a polygon).</summary>
+        public event Action ModeChanged;
+
+        private Vector2? _pointer;
+
         public MapEditorCanvas()
         {
-            MouseFilter = MouseFilterEnum.Stop;
-            ClipContents = true;
             MapZoneStyle.Prepare(this);
             GuiInput += OnGuiInput;
             MouseExited += OnMouseExited;
-            Resized += OnResized;
-            Connect("draw", Callable.From((Action)DrawAll));
         }
 
         /// <summary>Switches the interaction mode and refreshes the handles.</summary>
         public void SetMode(string mode)
         {
             Mode = mode == ModeDraw ? ModeDraw : ModeSelect;
+            MouseDefaultCursorShape = Mode == ModeDraw ? CursorShape.Cross : CursorShape.Arrow;
             RebuildHandles();
             QueueRedraw();
         }
 
-        /// <summary>Assigns the background texture and rebuilds the layout.</summary>
-        public void SetBackground(Texture2D texture)
+        /// <summary>Leaves draw mode (double-click, Enter, Esc) and tells the window.</summary>
+        public void FinishDrawing()
         {
-            Background = texture;
-            RebuildHandles();
-            QueueRedraw();
+            if (Mode != ModeDraw)
+                return;
+
+            SetMode(ModeSelect);
+            _pointer = null;
+            ModeChanged?.Invoke();
         }
 
         /// <summary>Recreates the handles from the current selection. Call after structural changes.</summary>
-        public void RebuildHandles()
+        public override void RebuildHandles()
         {
-            foreach (var handle in _handles)
-                handle.QueueFree();
-            _handles.Clear();
+            ClearHandles();
 
             var zone = Controller?.Selected;
-            if (zone == null)
-                return;
-
-            var rect = GetBackgroundRect();
-            if (rect.Size.X <= 0f || rect.Size.Y <= 0f)
+            if (zone == null || GetBackgroundRect().Size.X <= 0f)
                 return;
 
             if (zone.Points != null)
             {
                 for (var i = 0; i < zone.Points.Count; i++)
-                    AddHandle(rect, zone.Points[i], VertexColor, i);
+                {
+                    var index = i;
+                    var handle = AddHandle(zone.Points[i], VertexColor, i, p => OnHandleDrag(index, p));
+                    handle.RightClicked = () => RemoveVertexAt(index);
+                    handle.DragEnd = () => Changed?.Invoke();
+                }
             }
 
             if (HasMarker(zone))
-                AddHandle(rect, zone.ImagePos, MarkerColor, MapEditorHandle.MarkerHandle);
+                AddHandle(zone.ImagePos, MarkerColor, MarkerHandle, p => OnHandleDrag(MarkerHandle, p), 18f).DragEnd = () => Changed?.Invoke();
 
             if (zone.LabelPos.HasValue)
-                AddHandle(rect, zone.LabelPos.Value, LabelColor, MapEditorHandle.LabelHandle);
+                AddHandle(zone.LabelPos.Value, LabelColor, LabelHandle, p => OnHandleDrag(LabelHandle, p), 18f).DragEnd = () => Changed?.Invoke();
         }
 
-        /// <summary>
-        /// Aspect-preserving rectangle the background occupies inside the
-        /// canvas. Must stay identical to the runtime layout: the saved
-        /// normalised coordinates mean nothing if the editor and the game
-        /// disagree about this rectangle.
-        /// </summary>
-        public Rect2 GetBackgroundRect()
-        {
-            var controlSize = Size;
-            if (controlSize.X <= 0f || controlSize.Y <= 0f)
-                return new Rect2();
-
-            var textureSize = Background?.GetSize() ?? new Vector2(1920, 1080);
-            if (textureSize.X <= 0f || textureSize.Y <= 0f)
-                textureSize = new Vector2(1920, 1080);
-
-            var scale = Mathf.Min(controlSize.X / textureSize.X, controlSize.Y / textureSize.Y);
-            var size = textureSize * scale;
-            return new Rect2((controlSize - size) / 2f, size);
-        }
-
-        private void AddHandle(Rect2 rect, Vector2 normalized, Color color, int index)
-        {
-            var handle = new MapEditorHandle(color, index);
-            handle.DragUpdate = center => OnHandleDrag(index, center);
-            handle.DragEnd = () => Changed?.Invoke();
-            handle.RightClicked = () => RemoveVertexHandle(index);
-            AddChild(handle);
-            handle.GlobalPosition = GlobalPosition + rect.Position + Clamp01(normalized) * rect.Size - handle.Size / 2f;
-            _handles.Add(handle);
-        }
-
-        private void OnHandleDrag(int index, Vector2 globalCenter)
+        private void OnHandleDrag(int index, Vector2 normalized)
         {
             if (Controller == null)
                 return;
 
-            var rect = GetBackgroundRect();
-            if (rect.Size.X <= 0f || rect.Size.Y <= 0f)
-                return;
-
-            var local = globalCenter - GlobalPosition - rect.Position;
-            var normalized = Clamp01(new Vector2(local.X / rect.Size.X, local.Y / rect.Size.Y));
-
-            if (index == MapEditorHandle.MarkerHandle)
+            if (index == MarkerHandle)
                 Controller.SetImagePos(normalized);
-            else if (index == MapEditorHandle.LabelHandle)
+            else if (index == LabelHandle)
                 Controller.SetLabelPos(normalized);
             else
                 Controller.SetVertex(index, normalized);
@@ -175,19 +139,39 @@ namespace Cthangover.Tools.MapEditor
 
         private void OnGuiInput(InputEvent @event)
         {
-            if (Controller == null || @event is not InputEventMouseButton mb || !mb.Pressed)
+            if (Controller == null)
+                return;
+
+            if (@event is InputEventMouseMotion motion)
+            {
+                if (Mode == ModeDraw)
+                {
+                    _pointer = motion.Position;
+                    QueueRedraw();
+                }
+                return;
+            }
+
+            if (@event is not InputEventMouseButton mb || !mb.Pressed)
                 return;
 
             if (mb.ButtonIndex == MouseButton.Left)
             {
                 if (Mode == ModeDraw)
                 {
-                    Controller.AddVertex(Clamp01(PixelToNorm(mb.Position)));
+                    // The first click of a double-click already placed the
+                    // vertex; the double-click itself only finishes the polygon.
                     if (mb.DoubleClick)
-                        Mode = ModeSelect;
-                    RebuildHandles();
-                    Changed?.Invoke();
-                    QueueRedraw();
+                    {
+                        FinishDrawing();
+                    }
+                    else
+                    {
+                        Controller.AddVertex(Clamp01(LocalToNorm(mb.Position)));
+                        RebuildHandles();
+                        Changed?.Invoke();
+                        QueueRedraw();
+                    }
                 }
                 else
                 {
@@ -197,7 +181,6 @@ namespace Cthangover.Tools.MapEditor
                         Controller.Select(hit);
                         RebuildHandles();
                         ZonePicked?.Invoke(hit);
-                        Changed?.Invoke();
                         QueueRedraw();
                     }
                 }
@@ -213,12 +196,7 @@ namespace Cthangover.Tools.MapEditor
 
         private void OnMouseExited()
         {
-            QueueRedraw();
-        }
-
-        private void OnResized()
-        {
-            RebuildHandles();
+            _pointer = null;
             QueueRedraw();
         }
 
@@ -238,35 +216,42 @@ namespace Cthangover.Tools.MapEditor
             for (var i = zones.Count - 1; i >= 0; i--)
             {
                 var zone = zones[i];
-                if (HasMarker(zone) && (local - ToPixel(zone.ImagePos, rect)).Length() <= 24f)
+                if (HasMarker(zone) && (local - ToPixel(zone.ImagePos, rect)).Length() <= PickRadius)
                     return i;
-                if (zone.LabelPos.HasValue && (local - ToPixel(zone.LabelPos.Value, rect)).Length() <= 24f)
+                if (zone.LabelPos.HasValue && (local - ToPixel(zone.LabelPos.Value, rect)).Length() <= PickRadius)
                     return i;
             }
 
             return -1;
         }
 
-        private void DrawAll()
+        protected override void DrawContent(Rect2 rect)
         {
-            var rect = GetBackgroundRect();
-            if (rect.Size.X <= 0f || rect.Size.Y <= 0f)
-                return;
-
-            if (Background != null)
-                DrawTextureRect(Background, rect, false);
-            else
-                DrawRect(rect, UiTokens.Surface2);
-
             var zones = Controller?.Zones;
             if (zones == null)
                 return;
 
             for (var i = 0; i < zones.Count; i++)
-            {
-                var selected = i == Controller.SelectedIndex;
-                DrawZone(zones[i], rect, selected);
-            }
+                DrawZone(zones[i], rect, i == Controller.SelectedIndex);
+
+            DrawRubberBand(rect);
+        }
+
+        /// <summary>
+        /// In draw mode shows where the next vertex goes: a dashed segment from
+        /// the last vertex to the pointer and back to the first one, so the
+        /// author sees the polygon closing before clicking.
+        /// </summary>
+        private void DrawRubberBand(Rect2 rect)
+        {
+            var points = Controller.Selected?.Points;
+            if (Mode != ModeDraw || !_pointer.HasValue || points == null || points.Count == 0)
+                return;
+
+            var pointer = _pointer.Value;
+            DrawDashedLine(ToPixel(points[points.Count - 1], rect), pointer, UiTokens.AccentBright, 1.5f, 6f);
+            if (points.Count >= 2)
+                DrawDashedLine(pointer, ToPixel(points[0], rect), UiTokens.AccentLine, 1f, 6f);
         }
 
         private void DrawZone(MapZone zone, Rect2 rect, bool selected)
@@ -340,41 +325,31 @@ namespace Cthangover.Tools.MapEditor
             return rect.Position + normalized * rect.Size;
         }
 
-        private Vector2 PixelToNorm(Vector2 local)
-        {
-            var rect = GetBackgroundRect();
-            if (rect.Size.X <= 0f || rect.Size.Y <= 0f)
-                return Vector2.Zero;
-
-            return new Vector2((local.X - rect.Position.X) / rect.Size.X, (local.Y - rect.Position.Y) / rect.Size.Y);
-        }
-
-        private static Vector2 Clamp01(Vector2 value)
-        {
-            return new Vector2(Mathf.Clamp(value.X, 0f, 1f), Mathf.Clamp(value.Y, 0f, 1f));
-        }
-
         /// <summary>
         /// A zone is marker-capable when it has an icon, or when it is still a
         /// bare marker placeholder — no polygon and no text label. The
         /// placeholder keeps a freshly created marker visible and draggable
         /// before an icon is picked; once the zone grows a region or becomes a
-        /// pure inscription, the marker is only shown when an icon exists.
+        /// pure inscription, the marker is only shown when an icon exists. The
+        /// region currently being drawn is excluded while it has no vertices.
         /// </summary>
-        private static bool HasMarker(MapZone zone)
+        private bool HasMarker(MapZone zone)
         {
             if (!string.IsNullOrEmpty(zone.Image))
                 return true;
+
+            if (Mode == ModeDraw && zone == Controller?.Selected)
+                return false;
 
             return (zone.Points == null || zone.Points.Count == 0) && !zone.LabelPos.HasValue;
         }
 
         /// <summary>
-        /// Right-click handler: removes the polygon vertex nearest to the
-        /// pointer. While drawing, a click that misses every vertex removes the
-        /// last one instead, which makes right-click a natural "undo point"; in
-        /// select mode only a targeted vertex is deleted, so a stray click
-        /// cannot destroy geometry.
+        /// Right-click on empty canvas: removes the polygon vertex nearest to
+        /// the pointer. While drawing, a click that misses every vertex removes
+        /// the last one instead, which makes right-click a natural "undo
+        /// point"; in select mode only a targeted vertex is deleted, so a stray
+        /// click cannot destroy geometry.
         /// </summary>
         private void RemoveVertexAtPointer(Vector2 local, bool fallbackToLast)
         {
@@ -386,7 +361,13 @@ namespace Cthangover.Tools.MapEditor
             var index = FindNearestVertex(zone, local, rect);
             if (index < 0 && fallbackToLast)
                 index = zone.Points.Count - 1;
-            if (index < 0)
+            if (index >= 0)
+                RemoveVertexAt(index);
+        }
+
+        private void RemoveVertexAt(int index)
+        {
+            if (Controller == null)
                 return;
 
             Controller.RemoveVertex(index);
@@ -398,7 +379,7 @@ namespace Cthangover.Tools.MapEditor
         private static int FindNearestVertex(MapZone zone, Vector2 local, Rect2 rect)
         {
             var best = -1;
-            var bestDistance = 24f;
+            var bestDistance = PickRadius;
 
             for (var i = 0; i < zone.Points.Count; i++)
             {
@@ -411,21 +392,6 @@ namespace Cthangover.Tools.MapEditor
             }
 
             return best;
-        }
-
-        /// <summary>
-        /// Deletes a vertex from its handle's right-click. Marker and label
-        /// handles (negative indexes) are not vertices and are ignored.
-        /// </summary>
-        private void RemoveVertexHandle(int index)
-        {
-            if (index < 0 || Controller == null)
-                return;
-
-            Controller.RemoveVertex(index);
-            RebuildHandles();
-            Changed?.Invoke();
-            QueueRedraw();
         }
     }
 }

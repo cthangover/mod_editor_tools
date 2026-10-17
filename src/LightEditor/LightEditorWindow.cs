@@ -1,380 +1,386 @@
 using System;
 using System.Collections.Generic;
-using System.Text.Json;
+using System.Linq;
 using Cthangover.Core.Factories.Impls;
-using Cthangover.Mods.Time;
 using Cthangover.Core.UI.Theming;
 using Cthangover.Core.Utils;
+using Cthangover.Mods.Interface.Theming;
+using Cthangover.Mods.Interface.Tool;
+using Cthangover.Tools.Common;
 using Cthangover.Tools.Services;
 using Godot;
 
-using Cthangover.Mods.Interface.Tool;
 namespace Cthangover.Core.UI.Tool.LightEditor
 {
     /// <summary>
-    /// Editor window for placing and configuring static lights on a background.
-    /// Provides a sidebar with background selection, a light list with add/delete/select,
-    /// per-light property editors (radius, influence, colour), draggable handles on a
-    /// shader-powered preview, and JSON export. Uses <see cref="LightEditorController"/>
-    /// for data management and <see cref="ModResourceService"/> for background textures.
+    /// Editor of the static lights of a scene. The author picks a scenario —
+    /// the ones that already set lights come first — and edits its
+    /// <c>light_set</c> line visually: drag lights on a night-time preview of
+    /// the scene background, double-click to add one, tune radius, influence
+    /// and colour. Saving rewrites that line in the scenario (or inserts it
+    /// after the header). The background follows the scenario's scene.
     /// </summary>
     public partial class LightEditorWindow : ToolWindow
-	{
-		private LightEditorController controller;
+    {
+        private readonly LightEditorController _controller = new();
+        private readonly List<ScenarioFileInfo> _scenarios = new();
+        private readonly List<string> _backgroundIds = new();
 
-		private ItemList backgroundList;
-		private VBoxContainer lightListPanel;
-		private Button addLightBtn;
-		private TextureRect preview;
-		private ShaderMaterial previewMaterial;
+        private ScenarioFileInfo _scenario;
+        private string _scenarioText;
+        private bool _suppress;
 
-		private LineEdit radiusEdit;
-		private LineEdit influenceEdit;
-		private ColorPickerButton colorPicker;
-		private TextEdit jsonEdit;
+        private OptionButton _scenarioSelect;
+        private LightEditorCanvas _canvas;
+        private ItemList _lightList;
+        private Button _addBtn;
+        private Button _deleteBtn;
+        private VBoxContainer _propsBody;
+        private Label _propsEmpty;
+        private SpinBox _x;
+        private SpinBox _y;
+        private SpinBox _radius;
+        private SpinBox _influence;
+        private ColorPickerButton _color;
+        private FilteredList _bgList;
+        private CodeEdit _lineEdit;
 
-		private readonly List<LightEditorHandle> handles = new();
-		private int selectedIndex = -1;
-
-		private readonly List<string> bgIds = new();
-
-        /// <summary>Constructs the window, creates the controller, builds UI, and loads the background list.</summary>
         public LightEditorWindow() : base("tools/light_editor/title")
-		{
-			controller = new LightEditorController();
-			CthangoverTheme.Apply(this);
-			BuildUI();
-			LoadBackgroundList();
-		}
+        {
+            CthangoverTheme.Apply(this);
+            BuildUI();
+            LoadBackgrounds();
+            LoadScenarioList();
+            SetHint(ToolUi.Tr("tools/light_editor/hint"));
+        }
 
-		protected override void Cleanup()
-		{
-			foreach (var h in handles)
-				h.QueueFree();
-			handles.Clear();
-		}
+        // ── UI construction ────────────────────────────────────────
 
-		private Vector2 PreviewSize()
-		{
-			var sz = preview.Size;
-			if (sz.X <= 0 || sz.Y <= 0)
-				sz = new Vector2(1920, 1080);
-			return sz;
-		}
+        private void BuildUI()
+        {
+            var outer = CreateFillContainer();
+            AddChild(outer);
 
-		private void RefreshAll()
-		{
-			RepositionHandles();
-			controller.MarkDirty();
-			controller.UpdatePreview(previewMaterial, preview.GlobalPosition, PreviewSize());
-			UpdateLightList();
-			UpdateJsonEdit();
-		}
+            var toolbar = CreateToolbar();
+            outer.AddChild(toolbar);
+            _scenarioSelect = new OptionButton { CustomMinimumSize = new Vector2(420, 0), TooltipText = ToolUi.Tr("tools/light_editor/scenario_tip") };
+            _scenarioSelect.ItemSelected += OnScenarioPicked;
+            toolbar.AddChild(_scenarioSelect);
+            toolbar.AddChild(ToolUi.Button("tools/common/save", Save, ButtonKind.Primary, "tools/light_editor/save_tip"));
+            toolbar.AddChild(ToolUi.Button("tools/light_editor/copy_line", CopyLine, ButtonKind.Secondary, "tools/light_editor/copy_line_tip"));
+            toolbar.AddChild(UiKit.Spacer());
+            var lineToggle = ToolUi.Button("tools/light_editor/show_line", null, ButtonKind.Tab);
+            lineToggle.ToggleMode = true;
+            lineToggle.Toggled += on => _lineEdit.Visible = on;
+            toolbar.AddChild(lineToggle);
 
-		private void BuildUI()
-		{
-			var outerVBox = CreateFillContainer();
-			AddChild(outerVBox);
+            var main = new HSplitContainer
+            {
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill
+            };
+            outer.AddChild(main);
 
-			var mainHBox = new HBoxContainer();
-			mainHBox.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			mainHBox.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-			outerVBox.AddChild(mainHBox);
+            var side = new VBoxContainer();
+            main.AddChild(CreateSidebar(side, 300));
+            BuildSidebar(side);
 
-			var sidebarVBox = new VBoxContainer();
-			var sidebar = CreateSidebar(sidebarVBox);
-			mainHBox.AddChild(sidebar);
+            var canvasColumn = new VSplitContainer
+            {
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill
+            };
+            main.AddChild(canvasColumn);
 
-			sidebarVBox.AddChild(new Label { Text = TranslationServer.Translate("tools/light_editor/background") });
+            var canvasPanel = new PanelContainer
+            {
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill
+            };
+            canvasPanel.AddThemeStyleboxOverride("panel", UiKit.Frame(UiTokens.RadiusMd, UiTokens.Well, UiTokens.Line));
+            canvasColumn.AddChild(canvasPanel);
 
-			backgroundList = new ItemList();
-			backgroundList.CustomMinimumSize = new Vector2(0, 140);
-			backgroundList.ItemSelected += OnBackgroundSelected;
-			sidebarVBox.AddChild(backgroundList);
+            _canvas = new LightEditorCanvas
+            {
+                Controller = _controller,
+                PreviewMaterial = LightEditorController.CreatePreviewMaterial()
+            };
+            _canvas.Changed += OnCanvasChanged;
+            _canvas.SelectionChanged += RefreshAll;
+            canvasPanel.AddChild(_canvas);
 
-			sidebarVBox.AddChild(new Label { Text = TranslationServer.Translate("tools/light_editor/static_lights") });
+            _lineEdit = ToolUi.Code(editable: false);
+            _lineEdit.CustomMinimumSize = new Vector2(0, 70);
+            _lineEdit.WrapMode = TextEdit.LineWrappingMode.Boundary;
+            _lineEdit.Visible = false;
+            canvasColumn.AddChild(_lineEdit);
+        }
 
-			lightListPanel = new VBoxContainer();
-			sidebarVBox.AddChild(lightListPanel);
+        private void BuildSidebar(VBoxContainer column)
+        {
+            column.AddChild(ToolUi.Section("tools/light_editor/static_lights"));
+            _lightList = new ItemList { CustomMinimumSize = new Vector2(0, 150) };
+            _lightList.ItemSelected += index => { _controller.Select((int)index); RefreshAll(); };
+            column.AddChild(_lightList);
 
-			addLightBtn = new Button { Text = TranslationServer.Translate("tools/light_editor/add_light") };
-			addLightBtn.Pressed += OnAddLight;
-			sidebarVBox.AddChild(addLightBtn);
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", UiTokens.Space1);
+            column.AddChild(row);
+            _addBtn = ToolUi.Button("tools/light_editor/add_light", OnAdd);
+            _addBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            row.AddChild(_addBtn);
+            _deleteBtn = ToolUi.Button("tools/light_editor/delete", OnDelete, ButtonKind.Danger);
+            _deleteBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            row.AddChild(_deleteBtn);
 
-			sidebarVBox.AddChild(new Label { Text = TranslationServer.Translate("tools/light_editor/selected_props") });
+            column.AddChild(ToolUi.Section("tools/light_editor/selected_props"));
+            _propsEmpty = ToolUi.Hint(ToolUi.Tr("tools/light_editor/none_selected"));
+            column.AddChild(_propsEmpty);
+            _propsBody = new VBoxContainer();
+            _propsBody.AddThemeConstantOverride("separation", UiTokens.Space2);
+            column.AddChild(_propsBody);
 
-			var radiusHBox = new HBoxContainer();
-			radiusHBox.AddChild(new Label { Text = TranslationServer.Translate("tools/light_editor/radius") });
-			radiusEdit = new LineEdit { Text = "300" };
-			radiusEdit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			radiusEdit.TextChanged += OnRadiusChanged;
-			radiusHBox.AddChild(radiusEdit);
-			sidebarVBox.AddChild(radiusHBox);
+            _x = ToolUi.Field(_propsBody, "tools/light_editor/x", ToolUi.Number(0, 1, 0.001, _ => OnFieldsChanged()));
+            _y = ToolUi.Field(_propsBody, "tools/light_editor/y", ToolUi.Number(0, 1, 0.001, _ => OnFieldsChanged()));
+            _radius = ToolUi.Field(_propsBody, "tools/light_editor/radius", ToolUi.Number(10, 3000, 10, _ => OnFieldsChanged()), "tools/light_editor/radius_tip");
+            _influence = ToolUi.Field(_propsBody, "tools/light_editor/influence", ToolUi.Number(0, 1, 0.05, _ => OnFieldsChanged()), "tools/light_editor/influence_tip");
+            _color = ToolUi.Field(_propsBody, "tools/light_editor/color", new ColorPickerButton { CustomMinimumSize = new Vector2(0, 28), EditAlpha = false });
+            _color.ColorChanged += _ => OnFieldsChanged();
 
-			var infHBox = new HBoxContainer();
-			infHBox.AddChild(new Label { Text = TranslationServer.Translate("tools/light_editor/influence") });
-			influenceEdit = new LineEdit { Text = "1" };
-			influenceEdit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			influenceEdit.TextChanged += OnInfluenceChanged;
-			infHBox.AddChild(influenceEdit);
-			sidebarVBox.AddChild(infHBox);
+            column.AddChild(ToolUi.Section("tools/light_editor/background"));
+            _bgList = new FilteredList(180);
+            _bgList.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+            _bgList.Chosen += ShowBackground;
+            column.AddChild(_bgList);
+        }
 
-			var colorHBox = new HBoxContainer();
-			colorHBox.AddChild(new Label { Text = TranslationServer.Translate("tools/light_editor/color") });
-			colorPicker = new ColorPickerButton { Color = Colors.Yellow };
-			colorPicker.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			colorPicker.ColorChanged += OnColorChanged;
-			colorHBox.AddChild(colorPicker);
-			sidebarVBox.AddChild(colorHBox);
+        // ── loading ────────────────────────────────────────────────
 
-			var importBtn = new Button { Text = TranslationServer.Translate("tools/light_editor/import_json") };
-			importBtn.Pressed += OnImport;
-			sidebarVBox.AddChild(importBtn);
+        private void LoadBackgrounds()
+        {
+            _backgroundIds.AddRange(ModResourceService.GetBackgroundIds());
+            _bgList.SetItems(_backgroundIds);
+        }
 
-			sidebarVBox.AddChild(new Label { Text = TranslationServer.Translate("tools/light_editor/norm_coords") });
+        /// <summary>Scenarios with a <c>light_set</c> line first (marked ●), then all others.</summary>
+        private void LoadScenarioList()
+        {
+            var withLights = new List<ScenarioFileInfo>();
+            var others = new List<ScenarioFileInfo>();
+            foreach (var file in ScenarioFileService.ScanScenarioFiles().SelectMany(m => m.Groups).SelectMany(g => g.Files))
+            {
+                var text = ScenarioFileService.ReadAllText(file.ModId, file.RelativePath);
+                (text != null && LightEditorController.HasLights(text) ? withLights : others).Add(file);
+            }
 
-			var previewContainer = new PanelContainer();
-			previewContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			previewContainer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-			mainHBox.AddChild(previewContainer);
+            _scenarios.Clear();
+            _scenarios.AddRange(withLights);
+            _scenarios.AddRange(others);
 
-			preview = new TextureRect();
-			preview.ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize;
-			preview.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
-			preview.MouseFilter = Control.MouseFilterEnum.Stop;
-			preview.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			preview.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-			previewContainer.AddChild(preview);
+            _scenarioSelect.Clear();
+            _scenarioSelect.AddItem(ToolUi.Tr("tools/light_editor/pick_scenario"));
+            foreach (var file in _scenarios)
+                _scenarioSelect.AddItem((withLights.Contains(file) ? "●  " : "    ") + file.ModId + ": " + file.RelativePath);
+            _scenarioSelect.Select(0);
 
-			previewMaterial = controller.CreatePreviewMaterial();
-			preview.Material = previewMaterial;
+            if (withLights.Count > 0)
+            {
+                _scenarioSelect.Select(1);
+                OpenScenario(withLights[0]);
+            }
+            else
+            {
+                RefreshAll();
+            }
+        }
 
-			jsonEdit = new TextEdit();
-			jsonEdit.CustomMinimumSize = new Vector2(0, 70);
-			jsonEdit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			jsonEdit.WrapMode = TextEdit.LineWrappingMode.Boundary;
-			jsonEdit.TextChanged += OnJsonEditChanged;
-			outerVBox.AddChild(jsonEdit);
-		}
+        private void OnScenarioPicked(long index)
+        {
+            var file = index > 0 && index - 1 < _scenarios.Count ? _scenarios[(int)index - 1] : null;
+            RunDiscardingChanges(() => OpenScenario(file), () => _scenarioSelect.Select(_scenario == null ? 0 : _scenarios.IndexOf(_scenario) + 1));
+        }
 
-		private void OnJsonEditChanged()
-		{
-		}
+        private void OpenScenario(ScenarioFileInfo file)
+        {
+            _scenario = file;
+            _scenarioText = null;
+            MarkClean();
 
-		private void UpdateJsonEdit()
-		{
-			var json = controller.ExportLightsJson();
-			if (jsonEdit.Text != json)
-				jsonEdit.Text = json;
-		}
+            if (file != null)
+            {
+                _scenarioText = ScenarioFileService.ReadAllText(file.ModId, file.RelativePath) ?? string.Empty;
+                try
+                {
+                    var found = _controller.LoadFromScenario(_scenarioText);
+                    SetStatus(string.Format(ToolUi.Tr(found ? "tools/light_editor/loaded" : "tools/light_editor/no_lights_yet"), file.RelativePath));
+                }
+                catch (Exception ex)
+                {
+                    SetStatus($"{ToolUi.Tr("tools/common/load_error")}: {ex.Message}", ToolStatusKind.Error);
+                    GameLogger.Log("LIGHT_EDITOR", $"light_set parse failed in '{file.Key}': {ex.Message}", LogLevel.Error);
+                }
 
-		private void LoadBackgroundList()
-		{
-			bgIds.Clear();
-			backgroundList.Clear();
+                var scene = ScenarioFileService.ParseMetadata(_scenarioText).Scene;
+                var background = SceneBackgroundService.ForScene(scene);
+                if (background != null && ModResourceService.LoadBackgroundTexture(background) == null)
+                    SetStatus(string.Format(ToolUi.Tr("tools/common/background_missing"), background, scene), ToolStatusKind.Error);
+                else if (background != null)
+                    ShowBackground(background);
+            }
+            else
+            {
+                _controller.LoadFromScenario(string.Empty);
+            }
 
-			var ids = ModResourceService.GetBackgroundIds();
-			bgIds.AddRange(ids);
-			foreach (var id in ids)
-				backgroundList.AddItem(id);
-		}
+            RefreshAll();
+        }
 
-		private void OnBackgroundSelected(long index)
-		{
-			var bgId = bgIds[(int)index];
-			var tex = BackgroundFactory.Instance.Get(bgId);
-			preview.Texture = tex;
-			controller.SetBackgroundForPreview(tex, previewMaterial);
+        /// <summary>Shows a background with its optional <c>_depth</c>/<c>_albedo</c> masks in the shader.</summary>
+        private void ShowBackground(string id)
+        {
+            if (string.IsNullOrEmpty(id))
+                return;
 
-			var depthTex = BackgroundFactory.Instance.Get(bgId + "_depth");
-			if (depthTex != null)
-				controller.SetDepthForPreview(depthTex, previewMaterial);
+            _bgList.Select(id);
+            _canvas.SetBackground(ModResourceService.LoadBackgroundTexture(id));
+            LightEditorController.SetPreviewTextures(_canvas.PreviewMaterial,
+                ModResourceService.LoadBackgroundTexture(id + "_depth"),
+                ModResourceService.LoadBackgroundTexture(id + "_albedo"));
+            _canvas.Refresh();
+        }
 
-			var albedoTex = BackgroundFactory.Instance.Get(bgId + "_albedo");
-			if (albedoTex != null)
-				controller.SetAlbedoForPreview(albedoTex, previewMaterial);
-		}
+        // ── saving ─────────────────────────────────────────────────
 
-		private void OnAddLight()
-		{
-			if (handles.Count >= 10)
-				return;
+        /// <summary>Ctrl+S.</summary>
+        protected override void OnSaveShortcut() => Save();
 
-			var light = new LightDef
-			{
-				X = 0.4f,
-				Y = 0.3f,
-				Radius = 300f,
-				Influence = 1f,
-				ColorHex = "#ffff00"
-			};
+        private void Save()
+        {
+            if (_scenario == null)
+            {
+                SetStatus(ToolUi.Tr("tools/light_editor/pick_scenario"), ToolStatusKind.Error);
+                return;
+            }
 
-			controller.AddLight(light);
-			AddHandle(light, controller.Lights.Count - 1);
-			RefreshAll();
-		}
+            var updated = _controller.WriteToScenario(_scenarioText);
+            if (!ScenarioFileService.WriteAllText(_scenario.ModId, _scenario.RelativePath, updated))
+            {
+                SetStatus(ToolUi.Tr("tools/common/readonly"), ToolStatusKind.Error);
+                return;
+            }
 
-		private void AddHandle(LightDef light, int index)
-		{
-			var handle = new LightEditorHandle(light, index);
-			handle.DragUpdate += globalCenter =>
-			{
-				var localCenter = globalCenter - preview.GlobalPosition;
-				var currentSize = PreviewSize();
-				light.FromPixelPos(localCenter, currentSize);
-				RefreshAll();
-			};
-			handle.Clicked += () => SelectHandle(index);
-			preview.AddChild(handle);
-			handles.Add(handle);
-			RepositionHandle(handle, light);
-		}
+            _scenarioText = updated;
+            MarkClean();
+            SetStatus(string.Format(ToolUi.Tr("tools/common/saved"), _scenario.ModId + "/" + _scenario.RelativePath), ToolStatusKind.Ok);
+        }
 
-		private void RepositionHandle(LightEditorHandle handle, LightDef light)
-		{
-			var size = PreviewSize();
-			handle.GlobalPosition = preview.GlobalPosition
-				+ new Vector2(light.X * size.X - 12, light.Y * size.Y - 12);
-		}
+        private void CopyLine()
+        {
+            DisplayServer.ClipboardSet(_controller.ToScenarioLine());
+            SetStatus(ToolUi.Tr("tools/light_editor/copied"), ToolStatusKind.Ok);
+        }
 
-		private void RepositionHandles()
-		{
-			for (int i = 0; i < handles.Count && i < controller.Lights.Count; i++)
-				RepositionHandle(handles[i], controller.Lights[i]);
-		}
+        // ── editing ────────────────────────────────────────────────
 
-		private void SelectHandle(int index)
-		{
-			selectedIndex = index;
-			if (index < 0 || index >= controller.Lights.Count)
-			{
-				radiusEdit.Text = "300";
-				influenceEdit.Text = "1";
-				colorPicker.Color = Colors.Yellow;
-				return;
-			}
+        private void OnAdd()
+        {
+            if (_controller.Add(new Vector2(0.5f, 0.5f)) == null)
+            {
+                SetStatus(string.Format(ToolUi.Tr("tools/light_editor/limit"), LightEditorController.MaxLights), ToolStatusKind.Error);
+                return;
+            }
 
-			var light = controller.Lights[index];
-			radiusEdit.Text = light.Radius.ToString("F0");
-			influenceEdit.Text = light.Influence.ToString("F2");
-			colorPicker.Color = light.ToColor();
-		}
+            SetDirty();
+            RefreshAll();
+        }
 
-		private void OnRadiusChanged(string text)
-		{
-			if (selectedIndex < 0 || selectedIndex >= controller.Lights.Count)
-				return;
-			if (float.TryParse(text, out var val))
-			{
-				controller.Lights[selectedIndex].Radius = val;
-				RefreshAll();
-			}
-		}
+        private void OnDelete()
+        {
+            if (_controller.Selected == null)
+                return;
 
-		private void OnInfluenceChanged(string text)
-		{
-			if (selectedIndex < 0 || selectedIndex >= controller.Lights.Count)
-				return;
-			if (float.TryParse(text, out var val))
-			{
-				controller.Lights[selectedIndex].Influence = val;
-				RefreshAll();
-			}
-		}
+            _controller.RemoveSelected();
+            SetDirty();
+            RefreshAll();
+        }
 
-		private void OnColorChanged(Color color)
-		{
-			if (selectedIndex < 0 || selectedIndex >= controller.Lights.Count)
-				return;
-			controller.Lights[selectedIndex].ColorHex = color.ToHtml();
-			RefreshAll();
-		}
+        /// <summary>Delete removes the selected light.</summary>
+        protected override bool HandleKey(InputEventKey key)
+        {
+            if (key.Keycode != Key.Delete || _controller.Selected == null)
+                return false;
+            OnDelete();
+            return true;
+        }
 
-		private void UpdateLightList()
-		{
-			foreach (var child in lightListPanel.GetChildren())
-				child.QueueFree();
+        private void OnFieldsChanged()
+        {
+            var light = _controller.Selected;
+            if (_suppress || light == null)
+                return;
 
-			for (int i = 0; i < controller.Lights.Count; i++)
-			{
-				var light = controller.Lights[i];
-				var hBox = new HBoxContainer();
-				var label = new Label
-				{
-					Text = string.Format(TranslationServer.Translate("tools/light_editor/light_n"), i + 1, light.X, light.Y),
-					SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
-				};
-				hBox.AddChild(label);
+            light.X = (float)_x.Value;
+            light.Y = (float)_y.Value;
+            light.Radius = (float)_radius.Value;
+            light.Influence = (float)_influence.Value;
+            light.ColorHex = "#" + _color.Color.ToHtml(false);
+            SetDirty();
+            RefreshList();
+            _lineEdit.Text = _controller.ToScenarioLine();
+            _canvas.RebuildHandles();
+        }
 
-				var selBtn = new Button { Text = TranslationServer.Translate("tools/light_editor/btn_select") };
-				int idx = i;
-				selBtn.Pressed += () => SelectHandle(idx);
-				hBox.AddChild(selBtn);
+        private void OnCanvasChanged()
+        {
+            SetDirty();
+            _suppress = true;
+            WriteProperties();
+            _suppress = false;
+            RefreshList();
+            _lineEdit.Text = _controller.ToScenarioLine();
+        }
 
-				var delBtn = new Button { Text = TranslationServer.Translate("tools/light_editor/btn_delete") };
-				delBtn.Pressed += () => RemoveLight(idx);
-				hBox.AddChild(delBtn);
+        // ── refresh ────────────────────────────────────────────────
 
-				lightListPanel.AddChild(hBox);
-			}
+        private void RefreshAll()
+        {
+            RefreshList();
+            _suppress = true;
+            WriteProperties();
+            _suppress = false;
+            _lineEdit.Text = _controller.ToScenarioLine();
+            _addBtn.Disabled = _controller.Lights.Count >= LightEditorController.MaxLights;
+            _deleteBtn.Disabled = _controller.Selected == null;
+            _canvas.RebuildHandles();
+        }
 
-			addLightBtn.Disabled = controller.Lights.Count >= 10;
-		}
+        private void RefreshList()
+        {
+            _lightList.Clear();
+            for (var i = 0; i < _controller.Lights.Count; i++)
+            {
+                var light = _controller.Lights[i];
+                var index = _lightList.AddItem($"●  {i + 1}.  {light.X:0.000}, {light.Y:0.000}   r {light.Radius:0}");
+                _lightList.SetItemCustomFgColor(index, light.ToColor());
+            }
 
-		private void RemoveLight(int index)
-		{
-			if (index < 0 || index >= controller.Lights.Count)
-				return;
+            if (_controller.SelectedIndex >= 0)
+                _lightList.Select(_controller.SelectedIndex);
+        }
 
-			controller.RemoveLight(index);
+        private void WriteProperties()
+        {
+            var light = _controller.Selected;
+            _propsEmpty.Visible = light == null;
+            _propsBody.Visible = light != null;
+            if (light == null)
+                return;
 
-			if (index < handles.Count)
-			{
-				handles[index].QueueFree();
-				handles.RemoveAt(index);
-			}
-
-			for (int i = 0; i < handles.Count; i++)
-				handles[i].LightIndex = i;
-
-			if (selectedIndex == index)
-				selectedIndex = -1;
-			else if (selectedIndex > index)
-				selectedIndex--;
-
-			RefreshAll();
-		}
-
-		private void OnImport()
-		{
-			var json = jsonEdit.Text;
-			if (string.IsNullOrWhiteSpace(json))
-				return;
-
-			try
-			{
-				var lights = JsonSerializer.Deserialize<List<LightDef>>(json, Cthangover.Core.Utils.JsonOptionsProvider.ReadOptions);
-				if (lights == null || lights.Count == 0)
-					return;
-
-				foreach (var h in handles)
-					h.QueueFree();
-				handles.Clear();
-				controller.Clear();
-
-				foreach (var light in lights)
-				{
-					controller.AddLight(light);
-					AddHandle(light, controller.Lights.Count - 1);
-				}
-
-				selectedIndex = -1;
-				RefreshAll();
-			}
-			catch (Exception ex)
-			{
-				GameLogger.Log("LIGHT_EDITOR", $"Import JSON failed: {ex.Message}", LogLevel.Error);
-			}
-		}
-	}
+            _x.Value = light.X;
+            _y.Value = light.Y;
+            _radius.Value = light.Radius;
+            _influence.Value = light.Influence;
+            _color.Color = light.ToColor();
+        }
+    }
 }

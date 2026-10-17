@@ -5,6 +5,7 @@ using Cthangover.Core.UI.Theming;
 using Godot;
 
 using Cthangover.Mods.Interface.Base.Lists;
+using Cthangover.Mods.Interface.Theming;
 namespace Cthangover.Core.UI.Tool.SceneBuilder
 {
     /// <summary>
@@ -50,24 +51,34 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
 
         protected override void Construct()
         {
+            // ModWidget is a plain Control: it neither sizes its child nor
+            // reports the child's height. Anchor the column to full width and
+            // mirror its height into the minimum size so the hosting
+            // ScrollContainer can scroll (and wrapped hints get real width).
             var root = new VBoxContainer();
-            root.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            root.AddThemeConstantOverride("separation", UiTokens.Space2);
             AddChild(root);
+            root.SetAnchorsAndOffsetsPreset(LayoutPreset.TopWide);
+            root.MinimumSizeChanged += () => CustomMinimumSize = new Vector2(0, root.GetCombinedMinimumSize().Y);
 
             _hint = new Label();
             _hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
             _hint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            _hint.AddThemeColorOverride("font_color", UiTokens.Faint);
             _hint.Visible = false;
             root.AddChild(_hint);
 
             _header = new Label();
+            _header.AddThemeColorOverride("font_color", UiTokens.InkBright);
+            _header.AddThemeFontSizeOverride("font_size", UiTokens.FontBodyLarge);
             _header.Visible = false;
             root.AddChild(_header);
 
             _banner = new Label();
             _banner.AutowrapMode = TextServer.AutowrapMode.WordSmart;
             _banner.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            _banner.Modulate = UiTokens.Warning;
+            _banner.AddThemeColorOverride("font_color", UiTokens.Warning);
+            _banner.AddThemeFontSizeOverride("font_size", UiTokens.FontBodySmall);
             _banner.Visible = false;
             root.AddChild(_banner);
 
@@ -80,7 +91,9 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
                 Text = TranslationServer.Translate("tools/scene_builder/inspector_preset"),
                 TooltipText = "anchors_preset"
             };
-            presetLabel.CustomMinimumSize = new Vector2(110f, 0f);
+            presetLabel.CustomMinimumSize = new Vector2(120f, 0f);
+            presetLabel.AddThemeFontSizeOverride("font_size", UiTokens.FontBodySmall);
+            presetLabel.AddThemeColorOverride("font_color", UiTokens.Muted);
             _presetRow.AddChild(presetLabel);
 
             _presetDropdown = new OptionButton();
@@ -113,7 +126,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
 
             _hint.Visible = false;
             _header.Visible = true;
-            _header.Text = node.Name + "  (" + node.GetClass() + ")";
+            _header.Text = node.Name + "  ·  " + node.GetClass();
 
             var insideContainer = node is Control && node.GetParent() is Container;
             _banner.Visible = insideContainer;
@@ -126,8 +139,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
 
             foreach (var entry in InspectorPropertyCatalog.Build(node, insideContainer))
             {
-                var categoryLabel = new Label { Text = TranslationServer.Translate(entry.CategoryKey) };
-                categoryLabel.Modulate = UiTokens.AccentBright;
+                var categoryLabel = UiKit.SectionTitle(TranslationServer.Translate(entry.CategoryKey), UiTokens.FontSmall);
                 _rows.AddChild(categoryLabel);
 
                 foreach (var property in entry.Properties)
@@ -169,8 +181,10 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             var labelText = Humanize(property.Key);
             if (storedInFile)
                 labelText += " *";
-            var label = new Label { Text = labelText, TooltipText = BuildTooltip(property.Key, storedInFile) };
-            label.CustomMinimumSize = new Vector2(110f, 0f);
+            var label = new Label { Text = labelText, TooltipText = BuildTooltip(property.Key, storedInFile), MouseFilter = MouseFilterEnum.Pass, ClipText = true };
+            label.CustomMinimumSize = new Vector2(120f, 0f);
+            label.AddThemeFontSizeOverride("font_size", UiTokens.FontBodySmall);
+            label.AddThemeColorOverride("font_color", storedInFile ? UiTokens.Ink : UiTokens.Muted);
             label.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             row.AddChild(label);
 

@@ -5,6 +5,10 @@
 [node name="ScenarioFileTreePanel" type="VBoxContainer" script=ExtResource("1_script")]
 size_flags_horizontal = 3
 size_flags_vertical = 3
+theme_override_constants/separation = 4
+
+[node name="Search" type="LineEdit" parent="."]
+clear_button_enabled = true
 
 [node name="FileTree" type="Tree" parent="."]
 size_flags_horizontal = 3

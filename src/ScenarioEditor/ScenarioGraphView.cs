@@ -41,23 +41,22 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             _graph.NodeDeselected += OnNodeDeselected;
             AddChild(_graph);
 
-            var panel = new VBoxContainer { CustomMinimumSize = new Vector2(250, 0) };
+            var panel = new VBoxContainer { CustomMinimumSize = new Vector2(260, 0) };
             panel.SizeFlagsVertical = SizeFlags.ExpandFill;
             AddChild(panel);
 
-            panel.AddChild(new Label
-            {
-                Text = TranslationServer.Translate("tools/scenario_editor/graph_select_node"),
-                AutowrapMode = TextServer.AutowrapMode.WordSmart
-            });
+            var hint = UiKit.Hint(TranslationServer.Translate("tools/scenario_editor/graph_select_node"));
+            hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            panel.AddChild(hint);
 
             _infoLabel = new RichTextLabel
             {
                 BbcodeEnabled = true,
-                FitContent = true,
-                ScrollFollowing = true,
                 SizeFlagsVertical = SizeFlags.ExpandFill
             };
+            _infoLabel.AddThemeFontSizeOverride("normal_font_size", UiTokens.FontBody);
+            _infoLabel.AddThemeFontSizeOverride("bold_font_size", UiTokens.FontBodyLarge);
+            _infoLabel.AddThemeColorOverride("default_color", UiTokens.Body);
             _infoLabel.MetaClicked += OnLinkClicked;
             panel.AddChild(_infoLabel);
         }
@@ -71,13 +70,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             _nodes = new Dictionary<string, GraphNode>();
             _lookup = new Dictionary<string, SceneGraphNode>();
 
-            int x = 40, y = 40;
-            foreach (var pos in savedPositions.Values)
-            {
-                int bottom = (int)pos.Y + 160 + 20;
-                if (bottom > y)
-                    y = bottom;
-            }
+            var layout = ScenarioGraphLayout.Compute(data);
 
             foreach (var nodeData in data.Nodes)
             {
@@ -90,7 +83,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
                 var position = savedPositions.TryGetValue(key, out var saved)
                     ? saved
-                    : new Vector2(x, y);
+                    : layout[key];
 
                 var gn = new GraphNode
                 {
@@ -99,12 +92,15 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                     PositionOffset = position
                 };
 
-                gn.AddChild(new Label
+                var nodeLabel = new Label
                 {
-                    Text = $"Mod: {nodeData.ModId}\nScenarios: {nodeData.ScenarioCount}" +
-                           (bgCount > 0 ? $"\nBg: {firstBg}" +
+                    Text = string.Format(Tr("tools/scenario_editor/graph_node"), nodeData.ModId, nodeData.ScenarioCount) +
+                           (bgCount > 0 ? "\n" + string.Format(Tr("tools/scenario_editor/graph_node_bg"), firstBg) +
                            (bgCount > 1 ? $" +{bgCount - 1}" : "") : "")
-                });
+                };
+                nodeLabel.AddThemeColorOverride("font_color", UiTokens.Body);
+                nodeLabel.AddThemeFontSizeOverride("font_size", UiTokens.FontBodySmall);
+                gn.AddChild(nodeLabel);
 
                 var color = UiTokens.White;
                 if (nodeData.IsStartScene)
@@ -123,11 +119,6 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                 _nodes[key] = gn;
                 _lookup[key] = nodeData;
 
-                if (!savedPositions.ContainsKey(key))
-                {
-                    x += 280;
-                    if (x > 1000) { x = 40; y += 160; }
-                }
             }
 
             foreach (var edge in data.Edges)
@@ -138,6 +129,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                     continue;
                 _graph.ConnectNode(_nodes[srcK].Name, 0, _nodes[dstK].Name, 0);
             }
+
         }
 
         private Dictionary<string, Vector2> SaveNodePositions()
@@ -181,12 +173,12 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                 return;
 
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"Scene: [b]{nodeData.SceneName}[/b]");
-            sb.AppendLine($"Mod: {nodeData.ModId}");
+            sb.AppendLine($"[b]{nodeData.SceneName}[/b]");
+            sb.AppendLine(string.Format(Tr("tools/scenario_editor/graph_detail_mod"), nodeData.ModId));
             if (nodeData.Backgrounds.Count > 0)
-                sb.AppendLine($"Backgrounds: {string.Join(", ", nodeData.Backgrounds)}");
+                sb.AppendLine(string.Format(Tr("tools/scenario_editor/graph_node_bg"), string.Join(", ", nodeData.Backgrounds)));
             sb.AppendLine();
-            sb.AppendLine($"Scenarios ({nodeData.Scenarios.Count}):");
+            sb.AppendLine(string.Format(Tr("tools/scenario_editor/graph_detail_scenarios"), nodeData.Scenarios.Count));
 
             foreach (var sc in nodeData.Scenarios.OrderBy(s => s.Priority))
             {
@@ -201,6 +193,8 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
         {
             _infoLabel.Text = "";
         }
+
+        private static string Tr(string key) => TranslationServer.Translate(key);
 
         private void OnLinkClicked(Variant meta)
         {
