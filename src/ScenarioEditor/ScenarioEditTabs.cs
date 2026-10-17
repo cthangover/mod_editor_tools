@@ -2,42 +2,34 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Cthangover.Tools.Common;
 using Cthangover.Tools.Services;
 using Cthangover.Core.Utils;
 using Godot;
 
 namespace Cthangover.Core.UI.Tool.ScenarioEditor
 {
-    /// <summary>State of one open scenario file tab: identity, saved text and dirty flag.</summary>
-    public sealed class TabData
-    {
-        public string Key;
-        public string ModId;
-        public string RelativePath;
-        public string FileName;
-        public string SavedText;
-        public bool IsDirty;
-    }
-
     /// <summary>
     /// Tabbed editor area of the scenario editor: a permanent graph tab plus
     /// one text tab per opened .scenario file, with dirty tracking and a
-    /// monospace syntax-highlighted code editor.
+    /// monospace syntax-highlighted code editor with line numbers. Only one
+    /// <see cref="CodeEdit"/> exists; switching tabs swaps its text with the
+    /// tab's <see cref="TabData.Buffer"/>, which therefore holds unsaved edits
+    /// of background tabs.
     /// </summary>
     public partial class ScenarioEditTabs : VBoxContainer
     {
         private const int GraphTabIndex = 0;
 
         private TabBar _tabBar;
-        private TextEdit _textEdit;
+        private CodeEdit _textEdit;
         private ScenarioGraphView _graphView;
-        private Font _monospaceFont;
 
         private readonly List<TabData> _tabs = new();
         private int _activeTabIndex = -1;
         private bool _suppressTextChanged;
 
-        public TextEdit CodeEditor => _textEdit;
+        public CodeEdit CodeEditor => _textEdit;
         public string CurrentText => _textEdit.Text;
         public string CurrentKey =>
             _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count ? _tabs[_activeTabIndex].Key : null;
@@ -54,10 +46,12 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
         public event Action<bool> DirtyChanged;
         public event Action<string> GraphFileRequested;
 
-        public ScenarioEditTabs(ScenarioGraphView graphView, Font monospaceFont)
+        /// <summary>Raised on every user edit of the active text tab.</summary>
+        public event Action BufferChanged;
+
+        public ScenarioEditTabs(ScenarioGraphView graphView)
         {
             _graphView = graphView;
-            _monospaceFont = monospaceFont;
 
             SizeFlagsHorizontal = SizeFlags.ExpandFill;
             SizeFlagsVertical = SizeFlags.ExpandFill;
@@ -69,15 +63,8 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             _tabBar.AddTab(TranslationServer.Translate("tools/scenario_editor/tab_graph"));
             AddChild(_tabBar);
 
-            _textEdit = new TextEdit
-            {
-                SizeFlagsHorizontal = SizeFlags.ExpandFill,
-                SizeFlagsVertical = SizeFlags.ExpandFill,
-                Editable = true,
-                SyntaxHighlighter = ScenarioSyntaxService.CreateHighlighter(),
-                WrapMode = TextEdit.LineWrappingMode.None
-            };
-            _textEdit.AddThemeFontOverride("font", _monospaceFont);
+            _textEdit = ToolUi.Code();
+            _textEdit.SyntaxHighlighter = ScenarioSyntaxService.CreateHighlighter();
             _textEdit.TextChanged += OnTextChanged;
             AddChild(_textEdit);
 
@@ -115,12 +102,13 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                     ModId = modId,
                     RelativePath = relativePath,
                     FileName = Path.GetFileNameWithoutExtension(relativePath),
-                    SavedText = text,
+                    Buffer = text,
                     IsDirty = false
                 };
 
                 _tabs.Add(tab);
                 _tabBar.AddTab(tab.FileName);
+                _tabBar.SetTabTooltip(_tabBar.TabCount - 1, ScenarioFileService.GetDisplayPath(modId, relativePath));
 
                 SwitchToTextTab(_tabs.Count - 1);
             }
@@ -137,7 +125,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                 return;
 
             var tab = _tabs[_activeTabIndex];
-            tab.SavedText = _textEdit.Text;
+            tab.Buffer = _textEdit.Text;
             if (tab.IsDirty)
             {
                 tab.IsDirty = false;
@@ -218,16 +206,16 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                 return;
 
             if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
-                _tabs[_activeTabIndex].SavedText = _textEdit.Text;
+                _tabs[_activeTabIndex].Buffer = _textEdit.Text;
 
             _activeTabIndex = index;
             _tabBar.CurrentTab = index + 1;
 
             var tab = _tabs[index];
 
-            SetTextSilent(tab.SavedText);
+            SetTextSilent(tab.Buffer);
 
-            TextTabSelected?.Invoke(tab.SavedText);
+            TextTabSelected?.Invoke(tab.Buffer);
         }
 
         private void CloseTextTab(int index)
@@ -296,6 +284,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                 UpdateTabTitle(_activeTabIndex);
                 UpdateGlobalDirty();
             }
+            BufferChanged?.Invoke();
         }
 
         private void UpdateTabTitle(int index)
@@ -315,7 +304,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
         private void SaveActiveTextEditContent()
         {
             if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
-                _tabs[_activeTabIndex].SavedText = _textEdit.Text;
+                _tabs[_activeTabIndex].Buffer = _textEdit.Text;
         }
 
         private void OnGraphScenarioFileRequested(string filePath)

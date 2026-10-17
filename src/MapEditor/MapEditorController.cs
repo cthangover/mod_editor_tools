@@ -71,6 +71,22 @@ namespace Cthangover.Tools.MapEditor
         }
 
         /// <summary>
+        /// Creates a region without vertices and selects it — the start of
+        /// drawing a polygon point by point on the canvas.
+        /// </summary>
+        public MapZone StartRegion()
+        {
+            var zone = new MapZone
+            {
+                ID = MakeUniqueId("region"),
+                Title = string.Empty,
+                Points = new List<Vector2>(),
+            };
+
+            return Append(zone);
+        }
+
+        /// <summary>
         /// Creates an icon marker at the map centre with no icon chosen yet and
         /// selects it. The author assigns <c>image</c> and <c>scene</c> in the
         /// sidebar.

@@ -4,11 +4,12 @@ using System.Linq;
 using System.Text.Json;
 using Cthangover.Core.Mods;
 using Cthangover.Core.UI.Theming;
-using Cthangover.Core.UI.Tool;
 using Cthangover.Core.Utils;
+using Cthangover.Mods.Interface.Theming;
+using Cthangover.Mods.Interface.Tool;
+using Cthangover.Tools.Common;
 using Godot;
 
-using Cthangover.Mods.Interface.Tool;
 namespace Cthangover.Core.UI.Tool.CatalogExport
 {
     /// <summary>
@@ -17,11 +18,11 @@ namespace Cthangover.Core.UI.Tool.CatalogExport
     /// mods menu so that mod-management UI can live in the <c>mod_manager</c>
     /// mod while this authoring utility stays a tool.
     /// <para/>
-    /// The window lets the author pick any discovered mod, fill in the
-    /// catalog-only metadata (download URL, category, tags, changelog, status,
-    /// minimum game version, icon URL, localized names/descriptions), preview
-    /// the resulting JSON, copy it to the clipboard, or export it next to the
-    /// mod's zip via <see cref="ModCatalogExporter"/>.
+    /// Left: the form — read-only manifest data, catalog-only metadata
+    /// (download URL, categories, tags, changelog, status, minimum game
+    /// version, icon URL) and localized names. Right: the live JSON preview.
+    /// Actions: copy the JSON or export it next to the mod's zip via
+    /// <see cref="ModCatalogExporter"/> (archive and hashes are computed there).
     /// </summary>
     public partial class CatalogExportWindow : ToolWindow
     {
@@ -30,57 +31,59 @@ namespace Cthangover.Core.UI.Tool.CatalogExport
 
         private OptionButton _modSelect;
         private VBoxContainer _formHost;
+        private CodeEdit _previewEdit;
 
         private ModInfo _modInfo;
         private ModManifest _manifest;
         private LineEdit _urlEdit;
-        private ItemList _categoryList;
+        private readonly List<CheckBox> _categoryChecks = new();
         private LineEdit _tagsEdit;
         private TextEdit _changelogEdit;
         private OptionButton _statusOpt;
         private LineEdit _minGameVerEdit;
         private LineEdit _iconUrlEdit;
         private VBoxContainer _localeContainer;
-        private TextEdit _previewEdit;
 
         public CatalogExportWindow() : base("mods/catalog_title")
         {
-            Size = new Vector2I(620, 720);
+            Size = new Vector2I(1200, 820);
             CthangoverTheme.Apply(this);
 
-            var vbox = CreateFillContainer();
-            vbox.AddThemeConstantOverride("separation", 8);
-            AddChild(vbox);
+            var outer = CreateFillContainer();
+            AddChild(outer);
 
-            var selectRow = new HBoxContainer();
-            selectRow.AddThemeConstantOverride("separation", 8);
-            var selectLabel = new Label { Text = TranslationServer.Translate("mods/catalog_select_mod") };
-            selectLabel.AddThemeColorOverride("font_color", UiTokens.Muted);
-            selectRow.AddChild(selectLabel);
-
-            _modSelect = new OptionButton
-            {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
+            var toolbar = CreateToolbar();
+            outer.AddChild(toolbar);
+            _modSelect = new OptionButton { CustomMinimumSize = new Vector2(320, 0), TooltipText = ToolUi.Tr("mods/catalog_select_mod") };
             _modSelect.ItemSelected += OnModSelected;
-            selectRow.AddChild(_modSelect);
-            vbox.AddChild(selectRow);
+            toolbar.AddChild(_modSelect);
+            toolbar.AddChild(UiKit.Spacer());
+            toolbar.AddChild(ToolUi.Button("mods/catalog_copy", OnCopyPressed));
+            toolbar.AddChild(ToolUi.Button("mods/catalog_export_file", OnExportPressed, ButtonKind.Primary, "tools/catalog_export/export_tip"));
 
-            var scroll = new ScrollContainer
+            var split = new HSplitContainer
             {
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-                HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill
             };
-            vbox.AddChild(scroll);
+            outer.AddChild(split);
 
-            _formHost = new VBoxContainer
+            _formHost = new VBoxContainer();
+            var form = CreateSidebar(_formHost, 520);
+            form.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            split.AddChild(form);
+
+            var previewColumn = new VBoxContainer
             {
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill
             };
-            _formHost.AddThemeConstantOverride("separation", 8);
-            scroll.AddChild(_formHost);
+            previewColumn.AddChild(ToolUi.Section("tools/catalog_export/preview"));
+            _previewEdit = ToolUi.Code(editable: false);
+            previewColumn.AddChild(_previewEdit);
+            split.AddChild(previewColumn);
 
+            SetHint(ToolUi.Tr("tools/catalog_export/hint"));
             PopulateModList();
         }
 
@@ -93,7 +96,7 @@ namespace Cthangover.Core.UI.Tool.CatalogExport
                 if (info == null)
                     continue;
 
-                _modSelect.AddItem(info.DisplayTitle);
+                _modSelect.AddItem($"{info.DisplayTitle}  ({id})");
                 _modSelect.SetItemMetadata(_modSelect.ItemCount - 1, id);
             }
 
@@ -113,175 +116,101 @@ namespace Cthangover.Core.UI.Tool.CatalogExport
         {
             foreach (var child in _formHost.GetChildren())
                 child.QueueFree();
+            _categoryChecks.Clear();
 
             _modInfo = ModRegistry.Instance.GetMod(modId) as ModInfo;
             _manifest = _modInfo?.Manifest;
             if (_modInfo == null || _manifest == null)
                 return;
 
-            AddSectionLabel(_formHost, "Mod Info");
-            AddReadOnlyField(_formHost, "mods/id", _modInfo.Id);
-            AddReadOnlyField(_formHost, "mods/name", _modInfo.DisplayTitle);
-            AddReadOnlyField(_formHost, "mods/version", _modInfo.Version ?? "—");
-            AddReadOnlyField(_formHost, "mods/author", _modInfo.Author ?? "—");
+            _formHost.AddChild(ToolUi.Section("tools/catalog_export/mod_info"));
+            AddReadOnly("tools/catalog_export/id", _modInfo.Id);
+            AddReadOnly("tools/catalog_export/name", _modInfo.DisplayTitle);
+            AddReadOnly("mods/version", _modInfo.Version ?? "—");
+            AddReadOnly("mods/author", _modInfo.Author ?? "—");
 
-            AddSectionLabel(_formHost, "Catalog Metadata");
-            _urlEdit = AddLineEdit(_formHost, "mods/catalog_download_url");
+            _formHost.AddChild(ToolUi.Section("tools/catalog_export/metadata"));
+            _urlEdit = ToolUi.Field(_formHost, "mods/catalog_download_url", ToolUi.Text("https://…/" + modId + ".zip", _ => UpdatePreview()));
+            _statusOpt = ToolUi.Field(_formHost, "mods/catalog_status", new OptionButton());
+            foreach (var status in Statuses)
+                _statusOpt.AddItem(status);
+            _statusOpt.ItemSelected += _ => UpdatePreview();
+            _minGameVerEdit = ToolUi.Field(_formHost, "mods/catalog_min_game_version", ToolUi.Text("1.0.0", _ => UpdatePreview()));
+            _iconUrlEdit = ToolUi.Field(_formHost, "mods/catalog_icon_url", ToolUi.Text("https://…/icon.png", _ => UpdatePreview()));
+            _tagsEdit = ToolUi.Field(_formHost, "mods/catalog_tags", ToolUi.Text("story, ru", _ => UpdatePreview()));
 
-            _categoryList = new ItemList
-            {
-                CustomMinimumSize = new Vector2(0, 130),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                SelectMode = ItemList.SelectModeEnum.Toggle,
-            };
+            _formHost.AddChild(ToolUi.Section("mods/catalog_category"));
+            var grid = new GridContainer { Columns = 3 };
+            grid.AddThemeConstantOverride("h_separation", UiTokens.Space5);
             var preselected = _manifest.Category ?? CategoryType.Other;
-            for (var i = 0; i < Categories.Length; i++)
+            foreach (var category in Categories)
             {
-                _categoryList.AddItem(GetCategoryDisplayName(Categories[i]));
-                if ((preselected & Categories[i]) != 0)
-                    _categoryList.Select(i, false);
+                var check = new CheckBox { Text = GetCategoryDisplayName(category), ButtonPressed = (preselected & category) != 0 };
+                check.Toggled += _ => UpdatePreview();
+                _categoryChecks.Add(check);
+                grid.AddChild(check);
             }
-            AddLabeledControl(_formHost, "mods/catalog_category", _categoryList);
+            _formHost.AddChild(grid);
 
-            _tagsEdit = AddLineEdit(_formHost, "mods/catalog_tags");
-
+            _formHost.AddChild(ToolUi.Section("mods/catalog_changelog"));
             _changelogEdit = new TextEdit
             {
-                CustomMinimumSize = new Vector2(0, 60),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                CustomMinimumSize = new Vector2(0, 80),
                 WrapMode = TextEdit.LineWrappingMode.Boundary,
             };
-            AddLabeledControl(_formHost, "mods/catalog_changelog", _changelogEdit);
-
-            _statusOpt = AddOptionButton(_formHost, "mods/catalog_status", Statuses);
-
-            _minGameVerEdit = AddLineEdit(_formHost, "mods/catalog_min_game_version");
-            _iconUrlEdit = AddLineEdit(_formHost, "mods/catalog_icon_url");
-
-            AddSectionLabel(_formHost, "JSON Preview");
-            _previewEdit = new TextEdit
-            {
-                CustomMinimumSize = new Vector2(0, 160),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                Editable = false,
-                WrapMode = TextEdit.LineWrappingMode.None,
-            };
-            _previewEdit.AddThemeFontSizeOverride("font_size", UiTokens.FontSmall);
-            _formHost.AddChild(_previewEdit);
-
-            var btnRow = new HBoxContainer
-            {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            btnRow.AddThemeConstantOverride("separation", 8);
-
-            var copyBtn = new Button
-            {
-                Text = TranslationServer.Translate("mods/catalog_copy"),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            copyBtn.Pressed += OnCopyPressed;
-            btnRow.AddChild(copyBtn);
-
-            var exportBtn = new Button
-            {
-                Text = TranslationServer.Translate("mods/catalog_export_file"),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            exportBtn.Pressed += OnExportPressed;
-            btnRow.AddChild(exportBtn);
-
-            var closeBtn = new Button
-            {
-                Text = TranslationServer.Translate("mods/catalog_close"),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            closeBtn.Pressed += () => QueueFree();
-            btnRow.AddChild(closeBtn);
-
-            _formHost.AddChild(btnRow);
-
-            AddSectionLabel(_formHost, "Locales");
-            _localeContainer = new VBoxContainer
-            {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            _localeContainer.AddThemeConstantOverride("separation", 4);
-            _formHost.AddChild(_localeContainer);
-
-            var addLocaleBtn = new Button
-            {
-                Text = TranslationServer.Translate("mods/catalog_add_locale"),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            addLocaleBtn.Pressed += () => AddLocaleRow(string.Empty, string.Empty, string.Empty);
-            _formHost.AddChild(addLocaleBtn);
-
-            _urlEdit.TextChanged += _ => UpdatePreview();
-            _categoryList.ItemSelected += _ => UpdatePreview();
-            _categoryList.MultiSelected += (_, _) => UpdatePreview();
-            _tagsEdit.TextChanged += _ => UpdatePreview();
             _changelogEdit.TextChanged += UpdatePreview;
-            _statusOpt.ItemSelected += _ => UpdatePreview();
-            _minGameVerEdit.TextChanged += _ => UpdatePreview();
-            _iconUrlEdit.TextChanged += _ => UpdatePreview();
+            _formHost.AddChild(_changelogEdit);
+
+            _formHost.AddChild(ToolUi.Section("tools/catalog_export/locales"));
+            _formHost.AddChild(ToolUi.Hint(ToolUi.Tr("tools/catalog_export/locales_hint")));
+            _localeContainer = new VBoxContainer();
+            _localeContainer.AddThemeConstantOverride("separation", UiTokens.Space1);
+            _formHost.AddChild(_localeContainer);
+            _formHost.AddChild(ToolUi.Button("mods/catalog_add_locale", () => AddLocaleRow(string.Empty, string.Empty, string.Empty)));
 
             UpdatePreview();
+            SetStatus(string.Empty);
+        }
+
+        private void AddReadOnly(string labelKey, string value)
+        {
+            var label = UiKit.Label(value, UiTokens.FontBody, UiTokens.Body);
+            label.AddThemeFontOverride("font", ToolUi.Mono());
+            ToolUi.Field(_formHost, labelKey, label);
         }
 
         private static string GetCategoryDisplayName(CategoryType cat) => cat switch
         {
-            CategoryType.Story => TranslationServer.Translate("mods/category_story"),
-            CategoryType.Characters => TranslationServer.Translate("mods/category_characters"),
-            CategoryType.Gameplay => TranslationServer.Translate("mods/category_gameplay"),
-            CategoryType.Visual => TranslationServer.Translate("mods/category_visual"),
-            CategoryType.Audio => TranslationServer.Translate("mods/category_audio"),
-            CategoryType.UI => TranslationServer.Translate("mods/category_ui"),
-            CategoryType.Locale => TranslationServer.Translate("mods/category_locale"),
-            CategoryType.Library => TranslationServer.Translate("mods/category_library"),
-            CategoryType.Engine => TranslationServer.Translate("mods/category_engine"),
-            CategoryType.Overhaul => TranslationServer.Translate("mods/category_overhaul"),
-            CategoryType.Tools => TranslationServer.Translate("mods/category_tools"),
-            CategoryType.Editor => TranslationServer.Translate("mods/category_editor"),
-            CategoryType.Debug => TranslationServer.Translate("mods/category_debug"),
-            CategoryType.Other => TranslationServer.Translate("mods/category_other"),
+            CategoryType.Story => ToolUi.Tr("mods/category_story"),
+            CategoryType.Characters => ToolUi.Tr("mods/category_characters"),
+            CategoryType.Gameplay => ToolUi.Tr("mods/category_gameplay"),
+            CategoryType.Visual => ToolUi.Tr("mods/category_visual"),
+            CategoryType.Audio => ToolUi.Tr("mods/category_audio"),
+            CategoryType.UI => ToolUi.Tr("mods/category_ui"),
+            CategoryType.Locale => ToolUi.Tr("mods/category_locale"),
+            CategoryType.Library => ToolUi.Tr("mods/category_library"),
+            CategoryType.Engine => ToolUi.Tr("mods/category_engine"),
+            CategoryType.Overhaul => ToolUi.Tr("mods/category_overhaul"),
+            CategoryType.Tools => ToolUi.Tr("mods/category_tools"),
+            CategoryType.Editor => ToolUi.Tr("mods/category_editor"),
+            CategoryType.Debug => ToolUi.Tr("mods/category_debug"),
+            CategoryType.Other => ToolUi.Tr("mods/category_other"),
             _ => cat.ToString(),
         };
 
         private void AddLocaleRow(string lang, string name, string description)
         {
-            var row = new HBoxContainer
-            {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            row.AddThemeConstantOverride("separation", 4);
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", UiTokens.Space1);
 
-            var langEdit = new LineEdit
-            {
-                CustomMinimumSize = new Vector2(44, 0),
-                PlaceholderText = "en",
-                MaxLength = 5,
-                Text = lang,
-            };
+            var langEdit = new LineEdit { CustomMinimumSize = new Vector2(52, 0), PlaceholderText = "en", MaxLength = 5, Text = lang };
             row.AddChild(langEdit);
-
-            var nameEdit = new LineEdit
-            {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                PlaceholderText = TranslationServer.Translate("mods/catalog_locale_name"),
-                Text = name,
-            };
+            var nameEdit = new LineEdit { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, PlaceholderText = ToolUi.Tr("mods/catalog_locale_name"), Text = name };
             row.AddChild(nameEdit);
-
-            var descEdit = new LineEdit
-            {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                PlaceholderText = TranslationServer.Translate("mods/catalog_locale_desc"),
-                Text = description,
-            };
+            var descEdit = new LineEdit { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, PlaceholderText = ToolUi.Tr("mods/catalog_locale_desc"), Text = description };
             row.AddChild(descEdit);
 
-            var removeBtn = new Button { Text = "×", CustomMinimumSize = new Vector2(28, 0) };
+            var removeBtn = UiKit.IconButton("✕", ToolUi.Tr("tools/catalog_export/remove_locale"));
             removeBtn.Pressed += () => RemoveLocaleRow(row);
             row.AddChild(removeBtn);
 
@@ -290,6 +219,7 @@ namespace Cthangover.Core.UI.Tool.CatalogExport
             descEdit.TextChanged += _ => UpdatePreview();
 
             _localeContainer.AddChild(row);
+            UpdatePreview();
         }
 
         private void RemoveLocaleRow(HBoxContainer row)
@@ -301,28 +231,13 @@ namespace Cthangover.Core.UI.Tool.CatalogExport
 
         private void UpdatePreview()
         {
-            if (_previewEdit == null || _modInfo == null || _manifest == null)
+            if (_previewEdit == null || _modInfo == null || _manifest == null || _changelogEdit == null)
                 return;
 
-            var entry = BuildEntryFromManifest(_manifest);
-            entry.Downloads = new List<CatalogEntryDownload>
-            {
-                new()
-                {
-                    Version = entry.Version,
-                    Urls = new List<string> { _urlEdit.Text.Trim() },
-                    SizeBytes = 0,
-                    ArchiveSha256 = "—",
-                    InstallSha256 = "—",
-                },
-            };
-            entry.Category = CollectSelectedCategories(_categoryList, Categories);
-            entry.Tags = ParseTags(_tagsEdit.Text);
-            entry.Downloads[0].Changelog = NullIfEmpty(_changelogEdit.Text);
-            entry.Status = Statuses[_statusOpt.Selected];
-            entry.MinGameVersion = NullIfEmpty(_minGameVerEdit.Text);
-            entry.IconUrl = NullIfEmpty(_iconUrlEdit.Text);
-            entry.Locale = CollectLocales();
+            var entry = BuildExportEntry();
+            // Hashes are computed by the exporter from the real archive.
+            entry.Downloads[0].ArchiveSha256 = "computed-on-export";
+            entry.Downloads[0].InstallSha256 = "computed-on-export";
             _previewEdit.Text = JsonSerializer.Serialize(entry, JsonOptionsProvider.WriteIndentedIgnoreNullOptions);
         }
 
@@ -331,32 +246,23 @@ namespace Cthangover.Core.UI.Tool.CatalogExport
             var list = new List<CatalogLocaleEntry>();
             foreach (var child in _localeContainer.GetChildren())
             {
-                if (child is not HBoxContainer row || row.GetChildCount() < 3)
+                if (child is not HBoxContainer row || row.IsQueuedForDeletion() || row.GetChildCount() < 3)
                     continue;
 
                 var lang = ((LineEdit)row.GetChild(0)).Text.Trim();
-                var name = ((LineEdit)row.GetChild(1)).Text.Trim();
-                var description = ((LineEdit)row.GetChild(2)).Text.Trim();
                 if (lang.Length == 0)
                     continue;
 
                 list.Add(new CatalogLocaleEntry
                 {
                     Lang = lang,
-                    Name = NullIfEmpty(name),
-                    Description = NullIfEmpty(description),
+                    Name = NullIfEmpty(((LineEdit)row.GetChild(1)).Text),
+                    Description = NullIfEmpty(((LineEdit)row.GetChild(2)).Text),
                 });
             }
 
-            if (list.Count == 0 && _manifest != null)
-            {
-                list.Add(new CatalogLocaleEntry
-                {
-                    Lang = "en",
-                    Name = _manifest.Name,
-                    Description = _manifest.Description,
-                });
-            }
+            if (list.Count == 0)
+                list.Add(new CatalogLocaleEntry { Lang = "en", Name = _manifest.Name, Description = _manifest.Description });
 
             return list;
         }
@@ -371,12 +277,12 @@ namespace Cthangover.Core.UI.Tool.CatalogExport
                     Version = entry.Version,
                     Urls = new List<string> { _urlEdit.Text.Trim() },
                     SizeBytes = 0,
+                    Changelog = NullIfEmpty(_changelogEdit.Text),
                 },
             };
-            entry.Category = CollectSelectedCategories(_categoryList, Categories);
+            entry.Category = CollectSelectedCategories();
             entry.Tags = ParseTags(_tagsEdit.Text);
-            entry.Downloads[0].Changelog = NullIfEmpty(_changelogEdit.Text);
-            entry.Status = Statuses[_statusOpt.Selected];
+            entry.Status = Statuses[Math.Max(0, _statusOpt.Selected)];
             entry.MinGameVersion = NullIfEmpty(_minGameVerEdit.Text);
             entry.IconUrl = NullIfEmpty(_iconUrlEdit.Text);
             entry.Locale = CollectLocales();
@@ -386,7 +292,7 @@ namespace Cthangover.Core.UI.Tool.CatalogExport
         private void OnCopyPressed()
         {
             DisplayServer.ClipboardSet(_previewEdit.Text);
-            GameLogger.Log("CATALOG_EXPORT", $"Copied catalog JSON for '{_modInfo?.Id}' to clipboard");
+            SetStatus(ToolUi.Tr("tools/catalog_export/copied"), ToolStatusKind.Ok);
         }
 
         private void OnExportPressed()
@@ -394,15 +300,27 @@ namespace Cthangover.Core.UI.Tool.CatalogExport
             if (_modInfo == null)
                 return;
 
-            var entry = BuildExportEntry();
-            var modsRoot = ModRegistry.ModsPath;
-            var isZip = _modInfo.FileProvider.RootPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
-            if (isZip)
-                ModCatalogExporter.ExportFromZip(_modInfo, entry, modsRoot);
-            else
-                ModCatalogExporter.ExportFromFolder(_modInfo, entry, modsRoot);
+            if (string.IsNullOrWhiteSpace(_urlEdit.Text))
+            {
+                SetStatus(ToolUi.Tr("tools/catalog_export/url_required"), ToolStatusKind.Error);
+                return;
+            }
 
-            QueueFree();
+            try
+            {
+                var entry = BuildExportEntry();
+                var modsRoot = ModRegistry.ModsPath;
+                var isZip = _modInfo.FileProvider.RootPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+                var path = isZip
+                    ? ModCatalogExporter.ExportFromZip(_modInfo, entry, modsRoot)
+                    : ModCatalogExporter.ExportFromFolder(_modInfo, entry, modsRoot);
+                SetStatus(string.Format(ToolUi.Tr("tools/catalog_export/exported"), path), ToolStatusKind.Ok);
+            }
+            catch (Exception ex)
+            {
+                GameLogger.Log("CATALOG_EXPORT", $"export of '{_modInfo.Id}' failed: {ex.Message}", LogLevel.Error);
+                SetStatus($"{ToolUi.Tr("tools/catalog_export/export_error")}: {ex.Message}", ToolStatusKind.Error);
+            }
         }
 
         private static List<string> ParseTags(string text)
@@ -435,66 +353,15 @@ namespace Cthangover.Core.UI.Tool.CatalogExport
             };
         }
 
-        private static CategoryType CollectSelectedCategories(ItemList list, CategoryType[] categories)
+        private CategoryType CollectSelectedCategories()
         {
             var selected = (CategoryType)0;
-            for (var i = 0; i < categories.Length && i < list.ItemCount; i++)
+            for (var i = 0; i < Categories.Length && i < _categoryChecks.Count; i++)
             {
-                if (list.IsSelected(i))
-                    selected |= categories[i];
+                if (_categoryChecks[i].ButtonPressed)
+                    selected |= Categories[i];
             }
             return selected != 0 ? selected : CategoryType.Other;
-        }
-
-        private static void AddLabeledControl(Container parent, string labelKey, Control control)
-        {
-            var box = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-            var label = new Label
-            {
-                Text = TranslationServer.Translate(labelKey),
-            };
-            label.AddThemeFontSizeOverride("font_size", UiTokens.FontBodySmall);
-            label.AddThemeColorOverride("font_color", UiTokens.Muted);
-            box.AddChild(label);
-            box.AddChild(control);
-            parent.AddChild(box);
-        }
-
-        private static void AddReadOnlyField(Container parent, string labelKey, string value)
-        {
-            var label = new Label
-            {
-                Text = $"{TranslationServer.Translate(labelKey)}: {value}",
-            };
-            label.AddThemeFontSizeOverride("font_size", UiTokens.FontBody);
-            label.AddThemeColorOverride("font_color", UiTokens.Body);
-            parent.AddChild(label);
-        }
-
-        private static LineEdit AddLineEdit(Container parent, string labelKey)
-        {
-            var edit = new LineEdit { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-            AddLabeledControl(parent, labelKey, edit);
-            return edit;
-        }
-
-        private static OptionButton AddOptionButton(Container parent, string labelKey, string[] items)
-        {
-            var opt = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-            foreach (var item in items)
-                opt.AddItem(item);
-            AddLabeledControl(parent, labelKey, opt);
-            return opt;
-        }
-
-        private static void AddSectionLabel(Container parent, string text)
-        {
-            var sep = new HSeparator();
-            parent.AddChild(sep);
-            var label = new Label { Text = text };
-            label.AddThemeFontSizeOverride("font_size", UiTokens.FontBodyLarge);
-            label.AddThemeColorOverride("font_color", UiTokens.Ink);
-            parent.AddChild(label);
         }
     }
 }

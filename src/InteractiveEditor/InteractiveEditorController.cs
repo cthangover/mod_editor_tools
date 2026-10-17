@@ -1,244 +1,206 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Cthangover.Core.Interactive;
+using Cthangover.Core.Mods;
+using Cthangover.Core.Utils;
 using Godot;
 
 namespace Cthangover.Tools.InteractiveEditor
 {
-	/// <summary>
-	/// Data model for the interactive editor. Holds interactive definition
-	/// fields, manages collider vertex list for polygon editing, and produces
-	/// the output JSON.
-	/// </summary>
-	public class InteractiveEditorController
-	{
-		/// <summary>Unique identifier for the interactive object resource.</summary>
-		public string Id { get; set; } = "new_interactive";
-		/// <summary>Texture key mapped to a sprite resource by the resource system.</summary>
-		public string Texture { get; set; } = "";
-		/// <summary>Render layer: <c>"foreground"</c>, <c>"background"</c>, or <c>"ui"</c>.</summary>
-		public string Layer { get; set; } = "foreground";
-		/// <summary>Z-index for draw order within the layer.</summary>
-		public int ZIndex { get; set; }
-		/// <summary>Whether the interactive is initially enabled.</summary>
-		public bool Enabled { get; set; } = true;
-		/// <summary>Whether the interactive is visible.</summary>
-		public bool Visible { get; set; } = true;
-		/// <summary>Mouse cursor override name, e.g. <c>"PointingHand"</c>. Empty for default.</summary>
-		public string Cursor { get; set; } = "";
-		/// <summary>Collider shape type: <c>"rect"</c>, <c>"circle"</c>, or <c>"polygon"</c>.</summary>
-		public string HitType { get; set; } = "rect";
+    /// <summary>
+    /// Data model of the interactive editor: every definition of one
+    /// <c>interactives/*.json</c> file plus the selection. Definitions are
+    /// edited in place (the same objects the game deserialises), so the file
+    /// round-trips without a parallel field-by-field copy that could forget a
+    /// property. <see cref="Ensure"/> fills the optional sub-objects the editor
+    /// needs (hit area, highlight, actions) before a definition is shown.
+    /// </summary>
+    public class InteractiveEditorController
+    {
+        /// <summary>Collider kinds understood by <c>InteractiveObject</c>.</summary>
+        public static readonly string[] HitTypes = { "rect", "circle", "polygon" };
 
-        /// <summary>Normalised X position of the rect collider (0–1).</summary>
-		public float RectX { get; set; }
-        /// <summary>Normalised Y position of the rect collider (0–1).</summary>
-        public float RectY { get; set; }
-        /// <summary>Normalised width of the rect collider (0–1).</summary>
-        public float RectW { get; set; } = 0.1f;
-        /// <summary>Normalised height of the rect collider (0–1).</summary>
-        public float RectH { get; set; } = 0.1f;
+        /// <summary>Render layers understood by the interactive layer host.</summary>
+        public static readonly string[] Layers = { "foreground", "background", "ui" };
 
-        /// <summary>Normalised X centre of the circle collider (0–1).</summary>
-        public float CircleX { get; set; } = 0.5f;
-        /// <summary>Normalised Y centre of the circle collider (0–1).</summary>
-        public float CircleY { get; set; } = 0.5f;
-        /// <summary>Normalised radius of the circle collider (0–1).</summary>
-        public float CircleRadius { get; set; } = 0.05f;
+        /// <summary>Definitions of the open file, in file order.</summary>
+        public List<InteractiveDefinition> Items { get; private set; } = new();
 
-        /// <summary>List of normalised (0–1) vertices defining the polygon collider.</summary>
-        public List<Vector2> PolygonVertices { get; set; } = new();
+        /// <summary>Index of the selected definition, or -1.</summary>
+        public int SelectedIndex { get; private set; } = -1;
 
-        /// <summary>Hex colour string (e.g. <c>"#FFFF0033"</c>) for the highlight overlay.</summary>
-        public string HighlightColorHex { get; set; } = "#FFFF0033";
-        /// <summary>Scale multiplier applied to the sprite when highlighted.</summary>
-        public float HighlightScale { get; set; } = 1.02f;
+        /// <summary>The selected definition, or <c>null</c>.</summary>
+        public InteractiveDefinition Selected => SelectedIndex >= 0 && SelectedIndex < Items.Count ? Items[SelectedIndex] : null;
 
-        /// <summary>Scenario file path executed on click.</summary>
-        public string OnClickScenario { get; set; } = "";
-        /// <summary>Inline DSL commands executed on click, one per line.</summary>
-        public string OnClickCommands { get; set; } = "";
-        /// <summary>DSL commands executed when the mouse enters the interactive area.</summary>
-        public string OnHoverEnter { get; set; } = "";
-        /// <summary>DSL commands executed when the mouse leaves the interactive area.</summary>
-        public string OnHoverLeave { get; set; } = "";
+        /// <summary>Replaces the items with the contents of a <c>{"Items": [...]}</c> file. Throws on malformed JSON.</summary>
+        public void FromJson(string json)
+        {
+            var data = string.IsNullOrWhiteSpace(json)
+                ? null
+                : JsonSerializer.Deserialize<FileData<InteractiveDefinition>>(json, JsonOptionsProvider.ReadOptions);
+            Items = data?.Items ?? new List<InteractiveDefinition>();
+            foreach (var item in Items)
+                Ensure(item);
+            SelectedIndex = Items.Count > 0 ? 0 : -1;
+        }
 
-		/// <summary>Builds an InteractiveDefinition from current state.</summary>
-		public InteractiveDefinition ToDefinition()
-		{
-			var hitArea = new HitAreaDefinition { Type = HitType };
+        /// <summary>Serialises all items into the standard envelope (indented, nulls omitted).</summary>
+        public string ToJson()
+        {
+            var data = new FileData<InteractiveDefinition> { Items = Items };
+            return JsonSerializer.Serialize(data, JsonOptionsProvider.WriteIndentedIgnoreNullOptions);
+        }
 
-			switch (HitType)
-			{
-				case "rect":
-					hitArea.X = RectX;
-					hitArea.Y = RectY;
-					hitArea.Width = RectW;
-					hitArea.Height = RectH;
-					break;
-				case "circle":
-					hitArea.X = CircleX;
-					hitArea.Y = CircleY;
-					hitArea.Radius = CircleRadius;
-					break;
-				case "polygon":
-					hitArea.Vertices = PolygonVertices.ToArray();
-					break;
-			}
+        /// <summary>Drops all items.</summary>
+        public void Clear()
+        {
+            Items = new List<InteractiveDefinition>();
+            SelectedIndex = -1;
+        }
 
-			var clickAction = new ClickAction();
+        /// <summary>Selects by index; out of range clears the selection.</summary>
+        public void Select(int index)
+        {
+            SelectedIndex = index >= 0 && index < Items.Count ? index : -1;
+        }
 
-			if (!string.IsNullOrWhiteSpace(OnClickScenario))
-				clickAction.Scenario = OnClickScenario.Trim();
+        /// <summary>Appends a new clickable rect in the middle of the background and selects it.</summary>
+        public InteractiveDefinition Add()
+        {
+            var def = new InteractiveDefinition
+            {
+                ID = MakeUniqueId("interactive"),
+                Cursor = "PointingHand",
+                HitArea = new HitAreaDefinition { Type = "rect", X = 0.45f, Y = 0.45f, Width = 0.1f, Height = 0.1f }
+            };
+            Ensure(def);
+            Items.Add(def);
+            SelectedIndex = Items.Count - 1;
+            return def;
+        }
 
-			if (!string.IsNullOrWhiteSpace(OnClickCommands))
-			{
-				var lines = OnClickCommands.Split('\n', System.StringSplitOptions.RemoveEmptyEntries);
-				var cleanLines = new List<string>();
-				foreach (var line in lines)
-				{
-					var trimmed = line.Trim();
-					if (!string.IsNullOrEmpty(trimmed))
-						cleanLines.Add(trimmed);
-				}
-				if (cleanLines.Count > 0)
-					clickAction.Commands = cleanLines.ToArray();
-			}
+        /// <summary>Appends a deep copy of the selected definition with a fresh ID, slightly offset.</summary>
+        public InteractiveDefinition DuplicateSelected()
+        {
+            var source = Selected;
+            if (source == null)
+                return null;
 
-			return new InteractiveDefinition
-			{
-				ID = Id,
-				Texture = string.IsNullOrWhiteSpace(Texture) ? null : Texture.Trim(),
-				Layer = Layer,
-				ZIndex = ZIndex,
-				Enabled = Enabled,
-				Visible = Visible,
-				Cursor = string.IsNullOrWhiteSpace(Cursor) ? null : Cursor.Trim(),
-				HitArea = hitArea,
-				Highlight = new HighlightDefinition
-				{
-					ColorHex = HighlightColorHex,
-					Scale = HighlightScale
-				},
-				Actions = new InteractiveActionDefinition
-				{
-					OnClick = (clickAction.Scenario != null || clickAction.Commands != null) ? clickAction : null,
-					OnHoverEnter = string.IsNullOrWhiteSpace(OnHoverEnter) ? null : OnHoverEnter.Trim(),
-					OnHoverLeave = string.IsNullOrWhiteSpace(OnHoverLeave) ? null : OnHoverLeave.Trim()
-				}
-			};
-		}
+            var json = JsonSerializer.Serialize(source, JsonOptionsProvider.WriteCompactOptions);
+            var copy = JsonSerializer.Deserialize<InteractiveDefinition>(json, JsonOptionsProvider.ReadOptions);
+            copy.ID = MakeUniqueId(source.ID);
+            Ensure(copy);
+            Offset(copy.HitArea, new Vector2(0.02f, 0.02f));
+            Items.Add(copy);
+            SelectedIndex = Items.Count - 1;
+            return copy;
+        }
 
-		/// <summary>Loads state from an InteractiveDefinition.</summary>
-		public void FromDefinition(InteractiveDefinition def)
-		{
-			if (def == null) return;
+        /// <summary>Removes the selected definition and keeps a sensible selection.</summary>
+        public void RemoveSelected()
+        {
+            if (Selected == null)
+                return;
 
-			Id = def.ID ?? "new_interactive";
-			Texture = def.Texture ?? "";
-			Layer = def.Layer ?? "foreground";
-			ZIndex = def.ZIndex;
-			Enabled = def.Enabled;
-			Visible = def.Visible;
-			Cursor = def.Cursor ?? "";
+            Items.RemoveAt(SelectedIndex);
+            SelectedIndex = Items.Count == 0 ? -1 : Math.Min(SelectedIndex, Items.Count - 1);
+        }
 
-			if (def.HitArea != null)
-			{
-				HitType = def.HitArea.Type ?? "rect";
-				RectX = def.HitArea.X;
-				RectY = def.HitArea.Y;
-				RectW = def.HitArea.Width;
-				RectH = def.HitArea.Height;
-				CircleX = def.HitArea.X;
-				CircleY = def.HitArea.Y;
-				CircleRadius = def.HitArea.Radius;
-				PolygonVertices = def.HitArea.Vertices != null
-					? new List<Vector2>(def.HitArea.Vertices)
-					: new List<Vector2>();
-			}
-			else
-			{
-				HitType = "rect";
-			}
+        /// <summary>
+        /// Changes the collider kind of a definition, converting the current
+        /// shape so it stays roughly where it was (rect ↔ circle by bounds,
+        /// polygon from the bounds' corners).
+        /// </summary>
+        public static void SetHitType(InteractiveDefinition def, string type)
+        {
+            var hit = def.HitArea;
+            if (hit.Type == type)
+                return;
 
-			if (def.Highlight != null)
-			{
-				HighlightColorHex = def.Highlight.ColorHex ?? "#FFFF0033";
-				HighlightScale = def.Highlight.Scale;
-			}
+            var bounds = Bounds(hit);
+            hit.Type = type;
+            switch (type)
+            {
+                case "circle":
+                    hit.X = bounds.GetCenter().X;
+                    hit.Y = bounds.GetCenter().Y;
+                    hit.Radius = Mathf.Max(0.01f, Mathf.Min(bounds.Size.X, bounds.Size.Y) / 2f);
+                    break;
+                case "polygon":
+                    hit.Vertices = new[]
+                    {
+                        bounds.Position,
+                        new Vector2(bounds.End.X, bounds.Position.Y),
+                        bounds.End,
+                        new Vector2(bounds.Position.X, bounds.End.Y)
+                    };
+                    break;
+                default:
+                    hit.X = bounds.Position.X;
+                    hit.Y = bounds.Position.Y;
+                    hit.Width = bounds.Size.X;
+                    hit.Height = bounds.Size.Y;
+                    break;
+            }
+        }
 
-			OnClickScenario = def.Actions?.OnClick?.Scenario ?? "";
-			OnClickCommands = def.Actions?.OnClick?.Commands != null
-				? string.Join("\n", def.Actions.OnClick.Commands)
-				: "";
-			OnHoverEnter = def.Actions?.OnHoverEnter ?? "";
-			OnHoverLeave = def.Actions?.OnHoverLeave ?? "";
-		}
+        /// <summary>
+        /// Normalised bounding box of a hit area (circle radius taken as a
+        /// fraction of both axes — an approximation good enough for
+        /// conversions and duplication offsets).
+        /// </summary>
+        public static Rect2 Bounds(HitAreaDefinition hit)
+        {
+            switch (hit?.Type)
+            {
+                case "circle":
+                    return new Rect2(hit.X - hit.Radius, hit.Y - hit.Radius, hit.Radius * 2f, hit.Radius * 2f);
+                case "polygon" when hit.Vertices is { Length: > 0 }:
+                    var min = hit.Vertices[0];
+                    var max = hit.Vertices[0];
+                    foreach (var v in hit.Vertices)
+                    {
+                        min = new Vector2(Mathf.Min(min.X, v.X), Mathf.Min(min.Y, v.Y));
+                        max = new Vector2(Mathf.Max(max.X, v.X), Mathf.Max(max.Y, v.Y));
+                    }
+                    return new Rect2(min, max - min);
+                case null:
+                    return new Rect2(0.45f, 0.45f, 0.1f, 0.1f);
+                default:
+                    return new Rect2(hit.X, hit.Y, hit.Width, hit.Height);
+            }
+        }
 
-		/// <summary>Serializes the definition to formatted JSON (FileData envelope).</summary>
-		public string ToJson()
-		{
-			var def = ToDefinition();
-			var wrapper = new
-			{
-				Items = new[] { def }
-			};
+        /// <summary>Makes sure the optional parts the editor binds to exist.</summary>
+        public static void Ensure(InteractiveDefinition def)
+        {
+            def.HitArea ??= new HitAreaDefinition();
+            def.HitArea.Type = HitTypes.Contains(def.HitArea.Type) ? def.HitArea.Type : "rect";
+            def.Highlight ??= new HighlightDefinition();
+            def.Actions ??= new InteractiveActionDefinition();
+        }
 
-			var options = new JsonSerializerOptions
-			{
-				WriteIndented = true,
-				PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-				DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-			};
+        /// <summary>ID not used by another item: <c>base</c>, <c>base_2</c>, <c>base_3</c>…</summary>
+        public string MakeUniqueId(string baseId)
+        {
+            var used = new HashSet<string>(Items.Select(i => i.ID ?? string.Empty), StringComparer.OrdinalIgnoreCase);
+            if (!used.Contains(baseId))
+                return baseId;
 
-			return JsonSerializer.Serialize(wrapper, options);
-		}
+            var suffix = 2;
+            while (used.Contains($"{baseId}_{suffix}"))
+                suffix++;
+            return $"{baseId}_{suffix}";
+        }
 
-		/// <summary>Parses JSON back into the controller. Returns false on failure.</summary>
-		public bool FromJson(string json)
-		{
-			try
-			{
-				var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip };
-				var wrapper = JsonSerializer.Deserialize<FileDataWrapper>(json, options);
-				if (wrapper?.Items != null && wrapper.Items.Count > 0)
-				{
-					FromDefinition(wrapper.Items[0]);
-					return true;
-				}
-				return false;
-			}
-			catch
-			{
-				return false;
-			}
-		}
-
-		private class FileDataWrapper
-		{
-			public List<InteractiveDefinition> Items { get; set; }
-		}
-
-		/// <summary>Updates a polygon vertex at the given index.</summary>
-		public void SetPolygonVertex(int index, Vector2 value)
-		{
-			while (PolygonVertices.Count <= index)
-				PolygonVertices.Add(Vector2.Zero);
-			PolygonVertices[index] = value;
-		}
-
-		/// <summary>Removes a polygon vertex at the given index.</summary>
-		public void RemovePolygonVertex(int index)
-		{
-			if (index >= 0 && index < PolygonVertices.Count)
-				PolygonVertices.RemoveAt(index);
-		}
-
-		/// <summary>Adds a new polygon vertex at the default position (center of viewport).</summary>
-		public void AddPolygonVertex()
-		{
-			var offset = PolygonVertices.Count * 0.04f;
-			PolygonVertices.Add(new Vector2(0.5f + offset, 0.5f + offset));
-		}
-	}
+        private static void Offset(HitAreaDefinition hit, Vector2 delta)
+        {
+            hit.X += delta.X;
+            hit.Y += delta.Y;
+            if (hit.Vertices != null)
+                hit.Vertices = hit.Vertices.Select(v => v + delta).ToArray();
+        }
+    }
 }

@@ -16,11 +16,14 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
     /// overlay itself hit-tests them in its <c>GuiInput</c> handler — because
     /// per-marker Controls cannot capture motion outside their small rects and
     /// virtual overrides (_Process/_GuiInput) do not dispatch in mod assemblies.
+    /// Pressing inside the selected rectangle and dragging moves the node (all
+    /// four offsets shift together); a press that does not move is a pick.
     /// Live edits go straight onto the node during the drag; the accumulated
     /// key/value batch is emitted once on mouse release via
     /// <see cref="BatchCommitted"/> so text write-back happens in one pass.
-    /// Coordinates map between the fixed-size SubViewport canvas and this
-    /// overlay through the stretch scale of the hosting SubViewportContainer.
+    /// Coordinates map between the game-resolution canvas of the SubViewport
+    /// and this overlay (which shares the viewport container's rectangle) by a
+    /// plain scale.
     /// </summary>
     public partial class SelectionOverlay : ModWidget
     {
@@ -43,7 +46,9 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         private const int ResizeMarkerCount = 8;
         private const int AnchorDotCount = 4;
 
-        private enum DragKind { None, Resize, Anchor }
+        private const float MoveThreshold = 4f;
+
+        private enum DragKind { None, Resize, Anchor, PendingMove, Move }
 
         private struct Marker
         {
@@ -54,6 +59,9 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
 
         private SubViewport _viewport;
         private Control _containerArea;
+        private Vector2 _canvasSize;
+        private Vector2 _pressPoint;
+        private readonly float[] _moveStartOffsets = new float[4];
         private Control _selected;
         private readonly List<Marker> _markers = new();
         private readonly List<ColorRect> _borderRects = new();
@@ -66,10 +74,11 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
         private readonly Dictionary<string, double> _pendingValues = new();
 
         /// <summary>Binds the overlay to the preview pipeline; call once before use.</summary>
-        public void Setup(SubViewport viewport, Control containerArea)
+        public void Setup(SubViewport viewport, Control containerArea, Vector2I canvasSize)
         {
             _viewport = viewport;
             _containerArea = containerArea;
+            _canvasSize = canvasSize;
             _containerArea.Resized += Refresh;
             Refresh();
         }
@@ -250,6 +259,11 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             {
                 if (mb.Pressed)
                     OnPress(mb.Position);
+                else if (_drag == DragKind.PendingMove)
+                {
+                    _drag = DragKind.None;
+                    PickRequested?.Invoke(LocalToCanvas(mb.Position));
+                }
                 else if (_drag != DragKind.None)
                     FinishDrag();
                 return;
@@ -257,7 +271,10 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
 
             if (evt is InputEventMouseMotion motion)
             {
-                if (_drag != DragKind.None)
+                if (_drag == DragKind.PendingMove && (motion.Position - _pressPoint).Length() >= MoveThreshold)
+                    _drag = DragKind.Move;
+
+                if (_drag is DragKind.Resize or DragKind.Anchor or DragKind.Move)
                 {
                     ApplyDrag(motion.Position);
                     Refresh();
@@ -291,6 +308,19 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
                 return;
             }
 
+            if (_markers.Count > 0 && _selected is Control control
+                && CanvasRectToOverlay(control.GetGlobalRect()).HasPoint(localPoint))
+            {
+                BeginDrag(DragKind.PendingMove, 0);
+                _pressPoint = localPoint;
+                _moveStartOffsets[0] = control.OffsetLeft;
+                _moveStartOffsets[1] = control.OffsetTop;
+                _moveStartOffsets[2] = control.OffsetRight;
+                _moveStartOffsets[3] = control.OffsetBottom;
+                AcceptEvent();
+                return;
+            }
+
             PickRequested?.Invoke(LocalToCanvas(localPoint));
         }
 
@@ -312,6 +342,18 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             if (_drag == DragKind.Resize)
             {
                 ApplyResizeEdge(control, parentSize, mouseInParent, _dragIndex);
+                return;
+            }
+
+            if (_drag == DragKind.Move)
+            {
+                var delta = LocalToCanvas(localPoint) - LocalToCanvas(_pressPoint);
+                var dx = Mathf.Round(delta.X);
+                var dy = Mathf.Round(delta.Y);
+                StorePair(control, "offset_left", _moveStartOffsets[0] + dx);
+                StorePair(control, "offset_top", _moveStartOffsets[1] + dy);
+                StorePair(control, "offset_right", _moveStartOffsets[2] + dx);
+                StorePair(control, "offset_bottom", _moveStartOffsets[3] + dy);
                 return;
             }
 
@@ -453,17 +495,19 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
                 }
             }
 
-            MouseDefaultCursorShape = Control.CursorShape.Arrow;
+            MouseDefaultCursorShape = _markers.Count > 0 && _selected is Control control
+                && CanvasRectToOverlay(control.GetGlobalRect()).HasPoint(localPoint)
+                ? Control.CursorShape.Move
+                : Control.CursorShape.Arrow;
         }
 
         // ── coordinate mapping ──────────────────────────────────────────
 
         private Vector2 ComputeStretchScale()
         {
-            var viewSize = _viewport.Size;
             return new Vector2(
-                viewSize.X > 0 ? _containerArea.Size.X / viewSize.X : 1f,
-                viewSize.Y > 0 ? _containerArea.Size.Y / viewSize.Y : 1f);
+                _canvasSize.X > 0 ? _containerArea.Size.X / _canvasSize.X : 1f,
+                _canvasSize.Y > 0 ? _containerArea.Size.Y / _canvasSize.Y : 1f);
         }
 
         private Vector2 CanvasToOverlay(Vector2 canvasPoint)

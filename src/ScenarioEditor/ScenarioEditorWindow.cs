@@ -2,32 +2,38 @@ using System;
 using Cthangover.Core.Scenes;
 using Cthangover.Core.UI.Theming;
 using Cthangover.Core.Utils;
+using Cthangover.Mods.Interface.Theming;
+using Cthangover.Mods.Interface.Tool;
+using Cthangover.Tools.Common;
 using Cthangover.Tools.Services;
 using Godot;
 
-using Cthangover.Mods.Interface.Tool;
 namespace Cthangover.Core.UI.Tool.ScenarioEditor
 {
     /// <summary>
-    /// Tool window hosting the scenario editor: a file tree of every mod's
-    /// .scenario files, tabbed text/graph editors, metadata and thumbnail
-    /// panels, plus a play-test mode that runs the current scenario in-game.
+    /// Tool window hosting the scenario editor: a searchable tree of every
+    /// mod's .scenario files, tabbed code/graph editors, a metadata panel that
+    /// follows the text as it is typed, background thumbnails, plus a
+    /// play-test mode that runs the current scenario in-game.
+    /// <para/>
+    /// Shortcuts: Ctrl+S saves the active file, F5 play-tests it.
     /// </summary>
     public partial class ScenarioEditorWindow : ToolWindow
     {
+        private const double InfoRefreshDelay = 0.4;
+
         private Control _editLayout;
-        private Control _playLayout;
 
         private ScenarioFileTreePanel _fileTreePanel;
         private ScenarioEditTabs _editTabs;
         private ScenarioInfoPanel _infoPanel;
         private ScenarioThumbnailPanel _thumbPanel;
+        private Timer _infoTimer;
 
         private Button _saveBtn;
         private Button _openFileBtn;
         private Button _playBtn;
         private Label _filePathLabel;
-        private Label _statusLabel;
 
         private bool _playActive;
         private CanvasLayer _stopOverlay;
@@ -36,16 +42,13 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
         {
             CthangoverTheme.Apply(this);
             BuildUI();
+            SetHint(ToolUi.Tr("tools/scenario_editor/hint"));
         }
 
         /// <summary>Opens with the graph view so the editor starts on the cross-scene map.</summary>
         public override void _Ready()
         {
             _editTabs.SetViewToGraph();
-        }
-
-        protected override void Cleanup()
-        {
         }
 
         /// <summary>Returns from play-test mode as soon as the in-game test play ends.</summary>
@@ -60,8 +63,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             _editLayout = new Control
             {
                 AnchorRight = 1f,
-                AnchorBottom = 1f,
-                Visible = true
+                AnchorBottom = 1f
             };
             AddChild(_editLayout);
 
@@ -71,111 +73,70 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             var toolbar = CreateToolbar();
             outerVBox.AddChild(toolbar);
 
-            _saveBtn = new Button
-            {
-                Text = TranslationServer.Translate("tools/scenario_editor/save"),
-                Disabled = true
-            };
-            _saveBtn.Pressed += OnSavePressed;
+            _saveBtn = ToolUi.Button("tools/common/save", OnSavePressed, ButtonKind.Primary, "tools/common/save_tip");
             toolbar.AddChild(_saveBtn);
-
-            _openFileBtn = new Button
-            {
-                Text = TranslationServer.Translate("tools/scenario_editor/open_file"),
-                Disabled = true
-            };
-            _openFileBtn.Pressed += OnOpenFilePressed;
-            toolbar.AddChild(_openFileBtn);
-
-            _playBtn = new Button
-            {
-                Text = TranslationServer.Translate("tools/scenario_editor/play"),
-                TooltipText = TranslationServer.Translate("tools/scenario_editor/play_tooltip"),
-                Disabled = true
-            };
-            _playBtn.Pressed += OnPlayPressed;
+            _playBtn = ToolUi.Button("tools/scenario_editor/play", OnPlayPressed, ButtonKind.Secondary, "tools/scenario_editor/play_tooltip");
             toolbar.AddChild(_playBtn);
+            _openFileBtn = ToolUi.Button("tools/scenario_editor/open_file", OnOpenFilePressed, ButtonKind.Secondary, "tools/scenario_editor/open_file_tip");
+            toolbar.AddChild(_openFileBtn);
+            toolbar.AddChild(ToolUi.Divider());
+            toolbar.AddChild(ToolUi.Button("tools/scenario_editor/rescan", OnRescanPressed, ButtonKind.Secondary, "tools/scenario_editor/rescan_tip"));
 
-            _filePathLabel = new Label { Text = "" };
-            _filePathLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            _filePathLabel = new Label
+            {
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis
+            };
+            _filePathLabel.AddThemeFontOverride("font", ToolUi.Mono());
+            _filePathLabel.AddThemeColorOverride("font_color", UiTokens.Muted);
+            _filePathLabel.AddThemeFontSizeOverride("font_size", UiTokens.FontBodySmall);
             toolbar.AddChild(_filePathLabel);
 
-            var mainSplit = new HSplitContainer();
-            mainSplit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            mainSplit.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-            outerVBox.AddChild(mainSplit);
-
-            var leftPanel = new PanelContainer
+            var mainSplit = new HSplitContainer
             {
-                CustomMinimumSize = new Vector2(340, 0),
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                 SizeFlagsVertical = Control.SizeFlags.ExpandFill
             };
+            outerVBox.AddChild(mainSplit);
+
+            var leftVBox = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+            var leftPanel = CreateSidebar(leftVBox, 320);
             mainSplit.AddChild(leftPanel);
 
-            var leftVBox = new VBoxContainer();
-            leftPanel.AddChild(leftVBox);
-
-            var tabsContainer = new TabContainer();
-            tabsContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            tabsContainer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+            var tabsContainer = new TabContainer
+            {
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+                CustomMinimumSize = new Vector2(0, 420)
+            };
             leftVBox.AddChild(tabsContainer);
 
             _fileTreePanel = (ScenarioFileTreePanel)TscnScenes.LoadAndBuild("scenes/scenario_file_tree_panel.tscn");
             _fileTreePanel.FileSelected += OnFileSelected;
             tabsContainer.AddChild(_fileTreePanel);
-            tabsContainer.SetTabTitle(0, TranslationServer.Translate("tools/scenario_editor/tab_files"));
+            tabsContainer.SetTabTitle(0, ToolUi.Tr("tools/scenario_editor/tab_files"));
 
             _infoPanel = (ScenarioInfoPanel)TscnScenes.LoadAndBuild("scenes/scenario_info_panel.tscn");
             tabsContainer.AddChild(_infoPanel);
-            tabsContainer.SetTabTitle(1, TranslationServer.Translate("tools/scenario_editor/tab_info"));
+            tabsContainer.SetTabTitle(1, ToolUi.Tr("tools/scenario_editor/tab_info"));
 
-            leftVBox.AddChild(new Label { Text = TranslationServer.Translate("tools/scenario_editor/bg_previews") + ":" });
-
+            leftVBox.AddChild(ToolUi.Section("tools/scenario_editor/bg_previews"));
             _thumbPanel = (ScenarioThumbnailPanel)TscnScenes.LoadAndBuild("scenes/scenario_thumbnail_panel.tscn");
             leftVBox.AddChild(_thumbPanel);
 
-            var rightPanel = new PanelContainer
-            {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                SizeFlagsVertical = Control.SizeFlags.ExpandFill
-            };
-            mainSplit.AddChild(rightPanel);
-
-            _editTabs = new ScenarioEditTabs(new ScenarioGraphView(), GetMonospaceFont());
+            _editTabs = new ScenarioEditTabs(new ScenarioGraphView());
             _editTabs.TextTabSelected += OnTextTabSelected;
             _editTabs.GraphTabSelected += OnGraphTabSelected;
             _editTabs.DirtyChanged += OnDirtyChanged;
             _editTabs.GraphFileRequested += OnGraphFileRequested;
-            rightPanel.AddChild(_editTabs);
+            _editTabs.BufferChanged += () => _infoTimer.Start();
+            mainSplit.AddChild(_editTabs);
 
-            var statusBar = new HBoxContainer();
-            outerVBox.AddChild(statusBar);
-
-            _statusLabel = new Label { Text = "" };
-            statusBar.AddChild(_statusLabel);
-
-            _playLayout = new Control
-            {
-                AnchorRight = 1f,
-                AnchorBottom = 1f,
-                Visible = false
-            };
-            AddChild(_playLayout);
-
-            var stopContainer = new HBoxContainer();
-            stopContainer.Alignment = BoxContainer.AlignmentMode.Center;
-            stopContainer.AnchorRight = 0.5f;
-            stopContainer.AnchorLeft = 0.5f;
-            stopContainer.OffsetTop = 8;
-            _playLayout.AddChild(stopContainer);
-
-            var stopBtn = new Button
-            {
-                Text = TranslationServer.Translate("tools/scenario_editor/stop"),
-                CustomMinimumSize = new Vector2(120, 40)
-            };
-            stopBtn.Pressed += OnStopPressed;
-            stopContainer.AddChild(stopBtn);
+            _infoTimer = new Timer { OneShot = true, WaitTime = InfoRefreshDelay };
+            _infoTimer.Timeout += () => _infoPanel.Update(_editTabs.CurrentText);
+            AddChild(_infoTimer);
         }
 
         private void OnFileSelected(string filePath)
@@ -188,15 +149,19 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             _fileTreePanel.SelectFile(filePath);
         }
 
+        private void OnRescanPressed()
+        {
+            _fileTreePanel.Reload();
+            _editTabs.RefreshGraph();
+            SetStatus(ToolUi.Tr("tools/scenario_editor/rescanned"));
+        }
+
         private void OnTextTabSelected(string text)
         {
-            _filePathLabel.Text = _editTabs.CurrentKey != null
+            var hasFile = _editTabs.CurrentKey != null;
+            _filePathLabel.Text = hasFile
                 ? ScenarioFileService.GetDisplayPath(_editTabs.CurrentModId, _editTabs.CurrentRelativePath) : "";
-            _saveBtn.Disabled = false;
-            _openFileBtn.Disabled = false;
-            _playBtn.Disabled = false;
-            _statusLabel.Text = _editTabs.IsCurrentDirty
-                ? TranslationServer.Translate("tools/scenario_editor/status_modified") : "";
+            SetFileButtonsEnabled(hasFile);
             _infoPanel.Update(text);
             _thumbPanel.Load(text);
         }
@@ -204,26 +169,38 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
         private void OnGraphTabSelected()
         {
             _filePathLabel.Text = "";
-            _saveBtn.Disabled = true;
-            _openFileBtn.Disabled = true;
-            _playBtn.Disabled = true;
-            _statusLabel.Text = "";
+            SetFileButtonsEnabled(false);
             _infoPanel.Clear();
             _thumbPanel.Clear();
             _editTabs.RefreshGraph();
         }
 
+        private void SetFileButtonsEnabled(bool enabled)
+        {
+            _saveBtn.Disabled = !enabled;
+            _openFileBtn.Disabled = !enabled;
+            _playBtn.Disabled = !enabled;
+        }
+
         private void OnDirtyChanged(bool anyDirty)
         {
             if (anyDirty)
-            {
                 SetDirty();
-                _statusLabel.Text = TranslationServer.Translate("tools/scenario_editor/status_modified");
-            }
             else
-            {
                 MarkClean();
-            }
+        }
+
+        /// <summary>Ctrl+S.</summary>
+        protected override void OnSaveShortcut() => OnSavePressed();
+
+        /// <summary>F5 play-tests the active scenario.</summary>
+        protected override bool HandleKey(InputEventKey key)
+        {
+            if (key.Keycode != Key.F5 || !_editTabs.HasActiveFile)
+                return false;
+
+            OnPlayPressed();
+            return true;
         }
 
         private void OnSavePressed()
@@ -238,22 +215,20 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             {
                 if (!ScenarioFileService.WriteAllText(modId, relativePath, text))
                 {
-                    _statusLabel.Text = TranslationServer.Translate("tools/scenario_editor/readonly_zip");
+                    SetStatus(ToolUi.Tr("tools/scenario_editor/readonly_zip"), ToolStatusKind.Error);
                     return;
                 }
 
                 _editTabs.SaveCurrentFile();
-                _statusLabel.Text = TranslationServer.Translate("tools/scenario_editor/status_saved");
+                SetStatus(string.Format(ToolUi.Tr("tools/common/saved"), ScenarioFileService.GetDisplayPath(modId, relativePath)), ToolStatusKind.Ok);
                 _infoPanel.Update(text);
                 _thumbPanel.Load(text);
-                _editTabs.RefreshGraph();
                 GameLogger.Log("SCENARIO_EDITOR", $"Saved: {modId}/{relativePath}");
             }
             catch (Exception ex)
             {
                 GameLogger.Log("SCENARIO_EDITOR", $"Save failed: {ex.Message}", LogLevel.Error);
-                _statusLabel.Text = string.Format(
-                    TranslationServer.Translate("tools/scenario_editor/save_error"), ex.Message);
+                SetStatus(string.Format(ToolUi.Tr("tools/scenario_editor/save_error"), ex.Message), ToolStatusKind.Error);
             }
         }
 
@@ -265,14 +240,16 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             var path = ScenarioFileService.GetAbsolutePath(_editTabs.CurrentModId, _editTabs.CurrentRelativePath);
             if (string.IsNullOrEmpty(path))
             {
-                _statusLabel.Text = TranslationServer.Translate("tools/scenario_editor/readonly_zip");
+                SetStatus(ToolUi.Tr("tools/scenario_editor/readonly_zip"), ToolStatusKind.Error);
                 return;
             }
 
-            GD.Print($"[ScenarioEditor] Opening: {path}");
             var err = OS.ShellOpen(path);
             if (err != Error.Ok)
-                GameLogger.Log("SCENARIO_EDITOR", $"ShellOpen error: {err}", LogLevel.Error);
+            {
+                GameLogger.Log("SCENARIO_EDITOR", $"ShellOpen '{path}' failed: {err}", LogLevel.Error);
+                SetStatus($"{ToolUi.Tr("tools/scenario_editor/open_file_error")}: {err}", ToolStatusKind.Error);
+            }
         }
 
         private void OnPlayPressed()
@@ -285,7 +262,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
             if (metadata.Scene == "-")
             {
-                _statusLabel.Text = TranslationServer.Translate("tools/scenario_editor/no_scene_error");
+                SetStatus(ToolUi.Tr("tools/scenario_editor/no_scene_error"), ToolStatusKind.Error);
                 return;
             }
 
@@ -299,7 +276,6 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                 }
                 else
                 {
-                    _statusLabel.Text = TranslationServer.Translate("tools/scenario_editor/readonly_zip");
                     GameLogger.Log("SCENARIO_EDITOR",
                         $"Test play: '{modId}/{relativePath}' is read-only, playing from the editor buffer",
                         LogLevel.Warning);
@@ -307,13 +283,9 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             }
             catch (Exception ex)
             {
-                _statusLabel.Text = string.Format(
-                    TranslationServer.Translate("tools/scenario_editor/save_error"), ex.Message);
+                SetStatus(string.Format(ToolUi.Tr("tools/scenario_editor/save_error"), ex.Message), ToolStatusKind.Error);
                 return;
             }
-
-            _editLayout.Visible = false;
-            _playLayout.Visible = true;
 
             SceneManager.IsTestPlayActive = true;
             SceneManager.TestScenarioText = text;
@@ -348,8 +320,6 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
         private void ReturnFromPlay()
         {
             _playActive = false;
-            _playLayout.Visible = false;
-            _editLayout.Visible = true;
             Visible = true;
 
             if (_stopOverlay != null)
@@ -360,22 +330,21 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
             var sceneService = GetNodeOrNull<GodotSceneService>("/root/GodotSceneService");
             sceneService?.SwitchToMenu();
+            SetStatus(ToolUi.Tr("tools/scenario_editor/play_stopped"));
         }
 
+        /// <summary>Stop button shown over the running game while the scenario is play-tested.</summary>
         private CanvasLayer CreateStopOverlay()
         {
             var layer = new CanvasLayer { Layer = 128 };
 
-            var btn = new Button
-            {
-                Text = TranslationServer.Translate("tools/scenario_editor/stop"),
-                CustomMinimumSize = new Vector2(120, 40)
-            };
-            btn.Pressed += OnStopPressed;
+            var btn = ToolUi.Button("tools/scenario_editor/stop", OnStopPressed, ButtonKind.Danger);
+            btn.Theme = ToolTheme.Get();
+            btn.CustomMinimumSize = new Vector2(120, 36);
 
             var margin = new MarginContainer();
-            margin.AddThemeConstantOverride("margin_top", 8);
-            margin.AddThemeConstantOverride("margin_left", 8);
+            margin.AddThemeConstantOverride("margin_top", UiTokens.Space3);
+            margin.AddThemeConstantOverride("margin_left", UiTokens.Space3);
             margin.AddChild(btn);
 
             layer.AddChild(margin);

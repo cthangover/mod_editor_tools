@@ -20,7 +20,8 @@ namespace Cthangover.Tools.Services
     {
         /// <summary>
         /// Returns all unique background IDs (filenames without extension) from
-        /// the <c>"backgrounds"</c> file collection across all installed mods.
+        /// the <c>"backgrounds"</c> file collection across all installed mods,
+        /// sorted, without the <c>_albedo</c>/<c>_depth</c> lighting masks.
         /// </summary>
         public static List<string> GetBackgroundIds()
         {
@@ -35,11 +36,13 @@ namespace Cthangover.Tools.Services
                 if (!string.IsNullOrWhiteSpace(id) && exts.Contains(ext.ToLower()))
                 {
                     var cleanId = id.Substring(0, id.LastIndexOf('.'));
-                    if (!cleanId.EndsWith("_albedo") && !cleanId.EndsWith("_depth"))
+                    var bare = cleanId.TrimEnd('_');
+                    if (!bare.EndsWith("_albedo") && !bare.EndsWith("_depth"))
                         ids.Add(cleanId);
                 }
             }
-            
+
+            ids.Sort(StringComparer.OrdinalIgnoreCase);
             return ids;
         }
 
@@ -76,6 +79,29 @@ namespace Cthangover.Tools.Services
             return ids;
         }
         
+        /// <summary>
+        /// Texture IDs that make sense as small icons (map markers): every
+        /// texture except backgrounds and their <c>_depth</c>/<c>_albedo</c>
+        /// masks. Textures are keyed by file name, so backgrounds are excluded
+        /// by the file-name part of their IDs.
+        /// </summary>
+        public static List<string> GetIconIds()
+        {
+            var backgrounds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var id in GetBackgroundIds())
+                backgrounds.Add(id.Substring(id.LastIndexOf('/') + 1));
+
+            var result = new List<string>();
+            foreach (var id in GetTextureIds())
+            {
+                if (backgrounds.Contains(id) || id.EndsWith("_depth", StringComparison.OrdinalIgnoreCase)
+                    || id.EndsWith("_albedo", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                result.Add(id);
+            }
+            return result;
+        }
+
         /// <summary>
         /// Loads a background texture by ID via <see cref="BackgroundFactory.Instance.Get"/>.
         /// Returns <c>null</c> on any error (missing resource, load failure).

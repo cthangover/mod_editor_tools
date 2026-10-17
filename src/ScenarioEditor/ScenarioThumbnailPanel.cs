@@ -9,10 +9,11 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
     {
         private HBoxContainer _thumbContainer;
 
-        public ScenarioThumbnailPanel()
-        {
-            _thumbContainer = GetNode<HBoxContainer>("ThumbContainer");
-        }
+        /// <summary>
+        /// Container lookup is lazy: the tscn builder runs the constructor
+        /// before the child nodes exist.
+        /// </summary>
+        private HBoxContainer Thumbs => _thumbContainer ??= GetNode<HBoxContainer>("ThumbContainer");
 
         /// <summary>Loads the background thumbnails referenced by the given scenario text (missing ones render as placeholders).</summary>
         public void Load(string text)
@@ -26,7 +27,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
             if (refs.BackgroundRefs.Count == 0)
             {
-                _thumbContainer.AddChild(new Label
+                Thumbs.AddChild(new Label
                 {
                     Text = TranslationServer.Translate("tools/scenario_editor/no_backgrounds")
                 });
@@ -39,7 +40,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
                 if (tex != null)
                 {
-                    _thumbContainer.AddChild(new TextureRect
+                    Thumbs.AddChild(new TextureRect
                     {
                         Texture = tex,
                         ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
@@ -50,10 +51,10 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                 }
                 else
                 {
-                    _thumbContainer.AddChild(new Label
+                    Thumbs.AddChild(new Label
                     {
                         Text = $"[? {id}]",
-                        TooltipText = $"Not found: {id}"
+                        TooltipText = string.Format(TranslationServer.Translate("tools/scenario_editor/bg_missing"), id)
                     });
                 }
             }
@@ -62,7 +63,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
         /// <summary>Removes every thumbnail from the row.</summary>
         public new void Clear()
         {
-            foreach (var c in _thumbContainer.GetChildren())
+            foreach (var c in Thumbs.GetChildren())
                 c.QueueFree();
         }
     }

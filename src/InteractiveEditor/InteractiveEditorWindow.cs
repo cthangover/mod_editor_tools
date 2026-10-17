@@ -1,862 +1,644 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Cthangover.Core.Interactive;
-using Cthangover.Core.Mods;
-using Cthangover.Core.Mods.Resolvers;
-using Cthangover.Core.Factories.Impls;
 using Cthangover.Core.UI.Theming;
-using Cthangover.Core.UI.Tool;
 using Cthangover.Core.Utils;
+using Cthangover.Mods.Interface.Theming;
+using Cthangover.Mods.Interface.Tool;
+using Cthangover.Tools.Common;
 using Cthangover.Tools.Services;
 using Godot;
 
-using Cthangover.Mods.Interface.Tool;
 namespace Cthangover.Tools.InteractiveEditor
 {
-	/// <summary>
-	/// Tool window for creating and editing interactive object definitions:
-	/// renders the selected background with draggable collider handles
-	/// (rect, circle, polygon), edits the definition's fields, and writes the
-	/// resulting JSON back into a mod directory.
-	/// </summary>
-	public partial class InteractiveEditorWindow : ToolWindow
-	{
-		private static readonly Color _rectColor = UiTokens.Alpha(UiTokens.Success, 0.6f);
-		private static readonly Color _circleColor = UiTokens.Alpha(UiTokens.Info, 0.6f);
-		private static readonly Color _vertexColor = UiTokens.Alpha(UiTokens.AccentBright, 0.8f);
-		private static readonly Color _colliderOverlayColor = UiTokens.Alpha(UiTokens.Success, 0.15f);
-		private static readonly Color _colliderCircleOverlayColor = UiTokens.Alpha(UiTokens.Info, 0.15f);
-		private static readonly Color _colliderPolyOverlayColor = UiTokens.Alpha(UiTokens.Accent, 0.15f);
-		private static readonly Color _colliderPolyOutlineColor = UiTokens.Alpha(UiTokens.Accent, 0.6f);
-
-		private InteractiveEditorController _controller = new();
-
-		private Control _previewContainer;
-		private TextureRect _preview;
-		private Control _colliderOverlay;
-		private string _currentBgId;
-
-		private readonly List<InteractiveEditorHandle> _handles = new();
-
-		private TextEdit _jsonEdit;
-
-		private LineEdit _idEdit, _textureEdit;
-		private OptionButton _layerSelect;
-		private OptionButton _hitTypeSelect;
-		private ItemList _bgList;
-
-		private LineEdit _rectX, _rectY, _rectW, _rectH;
-		private LineEdit _circleX, _circleY, _circleR;
-		private VBoxContainer _rectParams, _circleParams, _polyParams;
-
-		private ColorPickerButton _highlightColorBtn;
-		private LineEdit _highlightScaleEdit;
-
-		private LineEdit _clickScenario, _hoverEnter, _hoverLeave;
-		private TextEdit _clickCommands;
-
-		private VBoxContainer _vertexList;
-		private Button _addVertexBtn;
-
-		private bool _suppressingSidebarEvents;
-		private int _draggingHandleIndex = -1;
-
-		public InteractiveEditorWindow() : base("tools/interactive_editor/title")
-		{
-			Size = new Vector2I(1280, 820);
-			CthangoverTheme.Apply(this);
-
-			var outer = CreateFillContainer();
-			AddChild(outer);
-
-			var toolbar = CreateToolbar();
-			outer.AddChild(toolbar);
-
-			var loadBtn = new Button { Text = Tr("tools/interactive_editor/btn_load_json") };
-			loadBtn.Pressed += OnLoadJson;
-			toolbar.AddChild(loadBtn);
-
-			var saveBtn = new Button { Text = Tr("tools/interactive_editor/btn_save") };
-			saveBtn.Pressed += OnSave;
-			toolbar.AddChild(saveBtn);
-
-			var importDefBtn = new Button { Text = Tr("tools/interactive_editor/btn_import_mod") };
-			importDefBtn.Pressed += OnImportFromMod;
-			toolbar.AddChild(importDefBtn);
-
-			var mainHBox = new HBoxContainer();
-			mainHBox.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			mainHBox.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-			outer.AddChild(mainHBox);
-
-			var sidebarVBox = new VBoxContainer();
-			var sidebar = CreateSidebar(sidebarVBox, 290);
-			mainHBox.AddChild(sidebar);
-
-			BuildSidebar(sidebarVBox);
-
-			_previewContainer = new Control
-			{
-				MouseFilter = Control.MouseFilterEnum.Stop,
-				SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-				SizeFlagsVertical = Control.SizeFlags.ExpandFill
-			};
-			mainHBox.AddChild(_previewContainer);
-
-			_preview = new TextureRect
-			{
-				ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-				StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-				MouseFilter = Control.MouseFilterEnum.Ignore,
-				AnchorRight = 1f,
-				AnchorBottom = 1f
-			};
-			_previewContainer.AddChild(_preview);
-
-			_colliderOverlay = new Control
-			{
-				MouseFilter = Control.MouseFilterEnum.Ignore,
-				Visible = false
-			};
-			_colliderOverlay.Connect("draw", Callable.From((Action)DrawColliderShape));
-			_previewContainer.AddChild(_colliderOverlay);
-
-			_previewContainer.Resized += () =>
-			{
-				RebuildHandles();
-				UpdateColliderOverlay();
-			};
-
-			_jsonEdit = new TextEdit { CustomMinimumSize = new Vector2(0, 150) };
-			_jsonEdit.AddThemeFontOverride("font", GetMonospaceFont());
-			_jsonEdit.TextChanged += () => SetDirty();
-			outer.AddChild(_jsonEdit);
-
-			RefreshJson();
-		}
-
-		private void BuildSidebar(VBoxContainer sidebar)
-		{
-			sidebar.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-
-			var tabs = new TabContainer();
-			tabs.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			sidebar.AddChild(tabs);
-
-			var bgTab = new VBoxContainer();
-			tabs.AddChild(bgTab);
-			tabs.SetTabTitle(0, Tr("tools/interactive_editor/tab_background"));
-			BuildBackgroundTab(bgTab);
-
-			var interactiveTab = new VBoxContainer();
-			tabs.AddChild(interactiveTab);
-			tabs.SetTabTitle(1, Tr("tools/interactive_editor/tab_interactive"));
-			BuildInteractiveTab(interactiveTab);
-
-			var scenarioTab = new VBoxContainer();
-			tabs.AddChild(scenarioTab);
-			tabs.SetTabTitle(2, Tr("tools/interactive_editor/tab_scenario"));
-			BuildScenarioTab(scenarioTab);
-		}
-
-		private void BuildBackgroundTab(VBoxContainer parent)
-		{
-			AddLabel(parent, "tools/interactive_editor/label_id");
-			_idEdit = AddLineEdit(parent, "my_interactive");
-			_idEdit.TextChanged += OnParamChanged;
-
-			AddLabel(parent, "tools/interactive_editor/label_texture_key");
-			_textureEdit = AddLineEdit(parent, "lamp");
-			_textureEdit.TextChanged += OnParamChanged;
-
-			AddLabel(parent, "tools/interactive_editor/label_layer");
-			_layerSelect = new OptionButton();
-			_layerSelect.AddItem("foreground");
-			_layerSelect.AddItem("background");
-			_layerSelect.AddItem("ui");
-			_layerSelect.ItemSelected += _ => OnParamChanged();
-			parent.AddChild(_layerSelect);
-
-			AddLabel(parent, "tools/interactive_editor/label_bg_preview");
-			_bgList = new ItemList();
-			_bgList.CustomMinimumSize = new Vector2(0, 100);
-			_bgList.ItemSelected += OnBgSelected;
-			parent.AddChild(_bgList);
-			LoadBackgroundList();
-		}
-
-		private void BuildInteractiveTab(VBoxContainer parent)
-		{
-			AddLabel(parent, "tools/interactive_editor/label_collider_type");
-			_hitTypeSelect = new OptionButton();
-			_hitTypeSelect.AddItem("rect");
-			_hitTypeSelect.AddItem("circle");
-			_hitTypeSelect.AddItem("polygon");
-			_hitTypeSelect.ItemSelected += OnHitTypeChanged;
-			parent.AddChild(_hitTypeSelect);
-
-			_rectParams = new VBoxContainer();
-			AddLabel(_rectParams, "tools/interactive_editor/label_rect_params");
-			_rectX = AddLabeledLine(_rectParams, "tools/interactive_editor/label_x"); _rectX.TextChanged += OnParamChanged;
-			_rectY = AddLabeledLine(_rectParams, "tools/interactive_editor/label_y"); _rectY.TextChanged += OnParamChanged;
-			_rectW = AddLabeledLine(_rectParams, "tools/interactive_editor/label_w"); _rectW.TextChanged += OnParamChanged;
-			_rectH = AddLabeledLine(_rectParams, "tools/interactive_editor/label_h"); _rectH.TextChanged += OnParamChanged;
-			parent.AddChild(_rectParams);
-
-			_circleParams = new VBoxContainer();
-			AddLabel(_circleParams, "tools/interactive_editor/label_circle_params");
-			_circleX = AddLabeledLine(_circleParams, "tools/interactive_editor/label_cx"); _circleX.TextChanged += OnParamChanged;
-			_circleY = AddLabeledLine(_circleParams, "tools/interactive_editor/label_cy"); _circleY.TextChanged += OnParamChanged;
-			_circleR = AddLabeledLine(_circleParams, "tools/interactive_editor/label_r"); _circleR.TextChanged += OnParamChanged;
-			_circleParams.Visible = false;
-			parent.AddChild(_circleParams);
-
-			_polyParams = new VBoxContainer();
-			AddLabel(_polyParams, "tools/interactive_editor/label_polygon_vertices");
-			_addVertexBtn = new Button { Text = Tr("tools/interactive_editor/btn_add_vertex") };
-			_addVertexBtn.Pressed += OnAddVertex;
-			_polyParams.AddChild(_addVertexBtn);
-			_vertexList = new VBoxContainer();
-			_polyParams.AddChild(_vertexList);
-			_polyParams.Visible = false;
-			parent.AddChild(_polyParams);
-
-			AddLabel(parent, "tools/interactive_editor/label_highlight_color");
-			_highlightColorBtn = new ColorPickerButton
-			{
-				Color = UiTokens.Alpha(UiTokens.Accent, 0.2f),
-				CustomMinimumSize = new Vector2(40, 30)
-			};
-			_highlightColorBtn.ColorChanged += _ => OnParamChanged();
-			parent.AddChild(_highlightColorBtn);
-
-			AddLabel(parent, "tools/interactive_editor/label_highlight_scale");
-			_highlightScaleEdit = AddLineEdit(parent, "1.02");
-			_highlightScaleEdit.TextChanged += OnParamChanged;
-		}
-
-		private void BuildScenarioTab(VBoxContainer parent)
-		{
-			AddLabel(parent, "tools/interactive_editor/label_cursor");
-			var cursorSelect = new OptionButton();
-			cursorSelect.AddItem(Tr("tools/interactive_editor/cursor_none"));
-			cursorSelect.AddItem("PointingHand");
-			cursorSelect.ItemSelected += idx =>
-			{
-				_controller.Cursor = idx == 0 ? "" : "PointingHand";
-				OnParamChanged();
-			};
-			parent.AddChild(cursorSelect);
-
-			AddLabel(parent, "tools/interactive_editor/label_onclick_scenario");
-			_clickScenario = AddLineEdit(parent, "scenarios/my_click.scenario");
-			_clickScenario.TextChanged += OnParamChanged;
-
-			AddLabel(parent, "tools/interactive_editor/label_onclick_commands");
-			_clickCommands = new TextEdit { CustomMinimumSize = new Vector2(0, 50) };
-			_clickCommands.TextChanged += OnParamChanged;
-			parent.AddChild(_clickCommands);
-
-			AddLabel(parent, "tools/interactive_editor/label_hover_enter");
-			_hoverEnter = AddLineEdit(parent, "set cursor_hint=click_me");
-			_hoverEnter.TextChanged += OnParamChanged;
-
-			AddLabel(parent, "tools/interactive_editor/label_hover_leave");
-			_hoverLeave = AddLineEdit(parent, "set cursor_hint=");
-			_hoverLeave.TextChanged += OnParamChanged;
-		}
-
-		private static string Tr(string key) => TranslationServer.Translate(key);
-
-		private void AddLabel(Control parent, string locKey)
-		{
-			var label = new Label { Text = Tr(locKey) };
-			label.AddThemeColorOverride("font_color", UiTokens.Muted);
-			parent.AddChild(label);
-		}
-
-		private LineEdit AddLineEdit(Control parent, string placeholder)
-		{
-			var edit = new LineEdit { PlaceholderText = placeholder };
-			parent.AddChild(edit);
-			return edit;
-		}
-
-		private LineEdit AddLabeledLine(Control parent, string locKey)
-		{
-			var hbox = new HBoxContainer();
-			var label = new Label { Text = Tr(locKey) };
-			label.CustomMinimumSize = new Vector2(25, 0);
-			hbox.AddChild(label);
-			var edit = new LineEdit();
-			edit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			hbox.AddChild(edit);
-			parent.AddChild(hbox);
-			return edit;
-		}
-
-		private void LoadBackgroundList()
-		{
-			_bgList.Clear();
-			var ids = ModResourceService.GetBackgroundIds();
-			foreach (var id in ids)
-				_bgList.AddItem(id);
-		}
-
-		private void OnBgSelected(long index)
-		{
-			var id = _bgList.GetItemText((int)index);
-			_currentBgId = id;
-			var tex = ModResourceService.LoadBackgroundTexture(id);
-			if (tex != null)
-			{
-				_preview.Texture = tex;
-			}
-			OnParamChanged();
-		}
-
-		private void OnHitTypeChanged(long index)
-		{
-			_controller.HitType = _hitTypeSelect.GetItemText((int)index);
-			_rectParams.Visible = _controller.HitType == "rect";
-			_circleParams.Visible = _controller.HitType == "circle";
-			_polyParams.Visible = _controller.HitType == "polygon";
-			OnParamChanged();
-		}
-
-		private void OnAddVertex()
-		{
-			_controller.AddPolygonVertex();
-			OnParamChanged();
-		}
-
-		private void OnParamChanged()
-		{
-			if (_suppressingSidebarEvents)
-			{
-				GameLogger.Log("INTERACTIVE_EDITOR", "OnParamChanged suppressed");
-				return;
-			}
-
-			GameLogger.Log("INTERACTIVE_EDITOR", $"OnParamChanged hitType={_controller.HitType} bgSize=({_previewContainer.Size.X:F0}x{_previewContainer.Size.Y:F0})");
-			ReadSidebarToController();
-			RebuildHandles();
-			UpdateColliderOverlay();
-			RefreshJson();
-			SetDirty();
-			UpdateVertexList();
-		}
-
-		private void OnDragUpdate()
-		{
-			UpdateNonDraggedHandles();
-			UpdateColliderOverlay();
-			RefreshJson();
-			SetDirty();
-		}
-
-		private void ReadSidebarToController()
-		{
-			_controller.Id = string.IsNullOrWhiteSpace(_idEdit.Text) ? "new_interactive" : _idEdit.Text.Trim();
-			_controller.Texture = _textureEdit.Text.Trim();
-			_controller.Layer = _layerSelect.GetItemText(_layerSelect.Selected);
-
-			if (_controller.HitType == "rect")
-			{
-				float.TryParse(_rectX.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v);
-				_controller.RectX = v;
-				float.TryParse(_rectY.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v); _controller.RectY = v;
-				float.TryParse(_rectW.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v); _controller.RectW = v;
-				float.TryParse(_rectH.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v); _controller.RectH = v;
-			}
-			else if (_controller.HitType == "circle")
-			{
-				float.TryParse(_circleX.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v);
-				_controller.CircleX = v;
-				float.TryParse(_circleY.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v); _controller.CircleY = v;
-				float.TryParse(_circleR.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v); _controller.CircleRadius = v;
-			}
-
-			_controller.HighlightColorHex = "#" + _highlightColorBtn.Color.ToHtml(false);
-			float.TryParse(_highlightScaleEdit.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var scale);
-			_controller.HighlightScale = scale;
-
-			_controller.OnClickScenario = _clickScenario.Text.Trim();
-			_controller.OnClickCommands = _clickCommands.Text.Trim();
-			_controller.OnHoverEnter = _hoverEnter.Text.Trim();
-			_controller.OnHoverLeave = _hoverLeave.Text.Trim();
-		}
-
-		private Rect2 GetBackgroundRect()
-		{
-			var cw = _previewContainer.Size.X;
-			var ch = _previewContainer.Size.Y;
-			if (cw <= 0 || ch <= 0) return new Rect2();
-
-			var texSize = new Vector2(1920, 1024);
-			var tex = _preview.Texture;
-			if (tex != null)
-			{
-				var ts = tex.GetSize();
-				if (ts.X > 0 && ts.Y > 0) texSize = ts;
-			}
-
-			var scale = Mathf.Min(cw / texSize.X, ch / texSize.Y);
-			var rw = texSize.X * scale;
-			var rh = texSize.Y * scale;
-			var ox = (cw - rw) / 2f;
-			var oy = (ch - rh) / 2f;
-			return new Rect2(ox, oy, rw, rh);
-		}
-
-		private Vector2 NormToPixel(Vector2 norm)
-		{
-			var bg = GetBackgroundRect();
-			return bg.Position + norm * bg.Size;
-		}
-
-		private Vector2 PixelToNorm(Vector2 pixel)
-		{
-			var bg = GetBackgroundRect();
-			if (bg.Size.X <= 0 || bg.Size.Y <= 0) return Vector2.Zero;
-			return new Vector2(
-				(pixel.X - bg.Position.X) / bg.Size.X,
-				(pixel.Y - bg.Position.Y) / bg.Size.Y);
-		}
-
-		private void WriteControllerToSidebar()
-		{
-			_suppressingSidebarEvents = true;
-			try
-			{
-				_idEdit.Text = _controller.Id;
-				_textureEdit.Text = _controller.Texture;
-
-				for (int i = 0; i < _layerSelect.ItemCount; i++)
-					if (_layerSelect.GetItemText(i) == _controller.Layer)
-						_layerSelect.Select(i);
-
-				for (int i = 0; i < _hitTypeSelect.ItemCount; i++)
-					if (_hitTypeSelect.GetItemText(i) == _controller.HitType)
-						_hitTypeSelect.Select(i);
-
-				_rectX.Text = _controller.RectX.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
-				_rectY.Text = _controller.RectY.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
-				_rectW.Text = _controller.RectW.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
-				_rectH.Text = _controller.RectH.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
-
-				_circleX.Text = _controller.CircleX.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
-				_circleY.Text = _controller.CircleY.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
-				_circleR.Text = _controller.CircleRadius.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
-
-				_rectParams.Visible = _controller.HitType == "rect";
-				_circleParams.Visible = _controller.HitType == "circle";
-				_polyParams.Visible = _controller.HitType == "polygon";
-
-				_highlightColorBtn.Color = new Color(_controller.HighlightColorHex);
-				_highlightScaleEdit.Text = _controller.HighlightScale.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-
-				_clickScenario.Text = _controller.OnClickScenario;
-				_clickCommands.Text = _controller.OnClickCommands;
-				_hoverEnter.Text = _controller.OnHoverEnter;
-				_hoverLeave.Text = _controller.OnHoverLeave;
-			}
-			finally
-			{
-				_suppressingSidebarEvents = false;
-			}
-		}
-
-		private void RebuildHandles()
-		{
-			foreach (var h in _handles)
-				h.QueueFree();
-			_handles.Clear();
-
-			var bg = GetBackgroundRect();
-			if (bg.Size.X <= 0 || bg.Size.Y <= 0)
-			{
-				GameLogger.Log("INTERACTIVE_EDITOR", "RebuildHandles skipped: bg size <= 0");
-				return;
-			}
-
-			GameLogger.Log("INTERACTIVE_EDITOR", $"RebuildHandles hitType={_controller.HitType} bg=({bg.Position.X:F0},{bg.Position.Y:F0} {bg.Size.X:F0}x{bg.Size.Y:F0})");
-
-			var globalTopLeft = _previewContainer.GlobalPosition;
-
-			switch (_controller.HitType)
-			{
-				case "rect":
-				{
-					var topLeft = NormToPixel(new Vector2(_controller.RectX, _controller.RectY));
-					var bottomRight = NormToPixel(new Vector2(
-						_controller.RectX + _controller.RectW,
-						_controller.RectY + _controller.RectH));
-
-				AddHandleAt(globalTopLeft + topLeft, _rectColor, 0, pos =>
-				{
-					var norm = PixelToNorm(pos - globalTopLeft);
-					_controller.RectX = Mathf.Clamp(norm.X, 0f, 1f);
-					_controller.RectY = Mathf.Clamp(norm.Y, 0f, 1f);
-					_draggingHandleIndex = 0;
-					OnDragUpdate();
-				});
-				AddHandleAt(globalTopLeft + bottomRight, _rectColor, 1, pos =>
-				{
-					var norm = PixelToNorm(pos - globalTopLeft);
-					_controller.RectW = Mathf.Max(0.01f, norm.X - _controller.RectX);
-					_controller.RectH = Mathf.Max(0.01f, norm.Y - _controller.RectY);
-					_draggingHandleIndex = 1;
-					OnDragUpdate();
-				});
-					break;
-				}
-				case "circle":
-				{
-					var refDim = Mathf.Min(bg.Size.X, bg.Size.Y);
-					var center = NormToPixel(new Vector2(_controller.CircleX, _controller.CircleY));
-					var radiusPx = _controller.CircleRadius * refDim;
-
-				AddHandleAt(globalTopLeft + center, _circleColor, 0, pos =>
-				{
-					var norm = PixelToNorm(pos - globalTopLeft);
-					_controller.CircleX = Mathf.Clamp(norm.X, 0f, 1f);
-					_controller.CircleY = Mathf.Clamp(norm.Y, 0f, 1f);
-					_draggingHandleIndex = 0;
-					OnDragUpdate();
-				});
-				AddHandleAt(globalTopLeft + new Vector2(center.X + radiusPx, center.Y), _circleColor, 1, pos =>
-				{
-					var local = pos - globalTopLeft;
-					var centerPx = NormToPixel(new Vector2(_controller.CircleX, _controller.CircleY));
-					var dist = (local - centerPx).Length();
-					_controller.CircleRadius = Mathf.Max(0.005f, dist / refDim);
-					_draggingHandleIndex = 1;
-					OnDragUpdate();
-				});
-					break;
-				}
-				case "polygon":
-				{
-					for (int i = 0; i < _controller.PolygonVertices.Count; i++)
-					{
-						var idx = i;
-						var v = _controller.PolygonVertices[i];
-				AddHandleAt(globalTopLeft + NormToPixel(v), _vertexColor, i, pos =>
-					{
-						var norm = PixelToNorm(pos - globalTopLeft);
-						_controller.SetPolygonVertex(idx, new Vector2(
-							Mathf.Clamp(norm.X, 0f, 1f),
-							Mathf.Clamp(norm.Y, 0f, 1f)));
-						_draggingHandleIndex = idx;
-						OnDragUpdate();
-					});
-					}
-					break;
-				}
-			}
-		}
-
-		private void UpdateNonDraggedHandles()
-		{
-			var bg = GetBackgroundRect();
-			if (bg.Size.X <= 0 || bg.Size.Y <= 0) return;
-
-			var globalTopLeft = _previewContainer.GlobalPosition;
-
-			for (int i = 0; i < _handles.Count; i++)
-			{
-				if (i == _draggingHandleIndex) continue;
-				var pos = GetHandleNormPosition(i);
-				var pixelPos = globalTopLeft + NormToPixel(pos);
-				var h = _handles[i];
-				if (h != null && !h.IsQueuedForDeletion())
-					h.GlobalPosition = pixelPos - h.Size / 2;
-			}
-		}
-
-		private Vector2 GetHandleNormPosition(int index)
-		{
-			switch (_controller.HitType)
-			{
-				case "rect":
-					if (index == 0)
-						return new Vector2(_controller.RectX, _controller.RectY);
-					return new Vector2(_controller.RectX + _controller.RectW, _controller.RectY + _controller.RectH);
-				case "circle":
-					if (index == 0)
-						return new Vector2(_controller.CircleX, _controller.CircleY);
-					return new Vector2(_controller.CircleX + _controller.CircleRadius, _controller.CircleY);
-				case "polygon":
-					if (index >= 0 && index < _controller.PolygonVertices.Count)
-						return _controller.PolygonVertices[index];
-					return Vector2.Zero;
-				default:
-					return Vector2.Zero;
-			}
-		}
-
-		private void UpdateColliderOverlay()
-		{
-			var bg = GetBackgroundRect();
-			if (bg.Size.X <= 0 || bg.Size.Y <= 0)
-			{
-				_colliderOverlay.Visible = false;
-				return;
-			}
-
-			_colliderOverlay.Visible = true;
-			_colliderOverlay.Position = bg.Position;
-			_colliderOverlay.Size = bg.Size;
-			_colliderOverlay.QueueRedraw();
-		}
-
-		private void DrawColliderShape()
-		{
-			var size = _colliderOverlay.Size;
-			if (size.X <= 0 || size.Y <= 0) return;
-
-			switch (_controller.HitType)
-			{
-				case "rect":
-				{
-					var pos = NormToPixelLocal(new Vector2(_controller.RectX, _controller.RectY));
-					var rectSize = new Vector2(_controller.RectW * size.X, _controller.RectH * size.Y);
-					_colliderOverlay.DrawRect(new Rect2(pos, rectSize), _colliderOverlayColor);
-					break;
-				}
-				case "circle":
-				{
-					var rPx = _controller.CircleRadius * Mathf.Min(size.X, size.Y);
-					var center = NormToPixelLocal(new Vector2(_controller.CircleX, _controller.CircleY));
-					_colliderOverlay.DrawCircle(center, rPx, _colliderCircleOverlayColor);
-					break;
-				}
-				case "polygon":
-				{
-				if (_controller.PolygonVertices.Count >= 3)
-				{
-					var points = new Vector2[_controller.PolygonVertices.Count];
-					for (int i = 0; i < _controller.PolygonVertices.Count; i++)
-						points[i] = NormToPixelLocal(_controller.PolygonVertices[i]);
-
-					if (PolygonArea(points) > 0.0001f)
-						_colliderOverlay.DrawColoredPolygon(points, _colliderPolyOverlayColor);
-					_colliderOverlay.DrawPolyline(points, _colliderPolyOutlineColor);
-				}
-					break;
-				}
-			}
-		}
-
-	private Vector2 NormToPixelLocal(Vector2 norm)
-	{
-		return norm * _colliderOverlay.Size;
-	}
-
-	private static float PolygonArea(Vector2[] points)
-	{
-		float area = 0;
-		for (int i = 0; i < points.Length; i++)
-		{
-			var j = (i + 1) % points.Length;
-			area += points[i].X * points[j].Y;
-			area -= points[j].X * points[i].Y;
-		}
-		return Mathf.Abs(area) * 0.5f;
-	}
-
-		private void AddHandleAt(Vector2 globalPos, Color color, int index, Action<Vector2> onDrag)
-		{
-			var handle = new InteractiveEditorHandle(color, index);
-			handle.DragUpdate = center =>
-			{
-				onDrag(center);
-			};
-			handle.Clicked = () =>
-			{
-				SelectHandle(index);
-			};
-		handle.DragEnd = () =>
-		{
-			GameLogger.Log("INTERACTIVE_EDITOR", $"DragEnd idx={index} syncing sidebar");
-			_draggingHandleIndex = -1;
-			_suppressingSidebarEvents = true;
-			WriteControllerToSidebar();
-			_suppressingSidebarEvents = false;
-			UpdateVertexList();
-		};
-			handle.MouseDefaultCursorShape = Control.CursorShape.PointingHand;
-			_previewContainer.AddChild(handle);
-			handle.GlobalPosition = globalPos - handle.Size / 2;
-			_handles.Add(handle);
-		}
-
-		private void SelectHandle(int index)
-		{
-			if (_controller.HitType == "polygon" && index >= 0 && index < _controller.PolygonVertices.Count)
-			{
-				var v = _controller.PolygonVertices[index];
-				GD.Print($"Selected vertex {index}: ({v.X:F3}, {v.Y:F3})");
-			}
-		}
-
-		private void UpdateVertexList()
-		{
-			for (int i = _vertexList.GetChildCount() - 1; i >= 0; i--)
-				_vertexList.GetChild(i).QueueFree();
-
-			if (_controller.HitType != "polygon") return;
-
-			for (int i = 0; i < _controller.PolygonVertices.Count; i++)
-			{
-				var idx = i;
-				var v = _controller.PolygonVertices[i];
-				var row = new HBoxContainer();
-
-				var xEdit = new LineEdit();
-				xEdit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-				xEdit.Text = v.X.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
-				xEdit.TextChanged += txt =>
-				{
-					if (float.TryParse(xEdit.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var val))
-						_controller.SetPolygonVertex(idx, new Vector2(val, _controller.PolygonVertices[idx].Y));
-					OnParamChanged();
-				};
-				row.AddChild(xEdit);
-
-				var yEdit = new LineEdit();
-				yEdit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-				yEdit.Text = v.Y.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
-				yEdit.TextChanged += txt =>
-				{
-					if (float.TryParse(yEdit.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var val))
-						_controller.SetPolygonVertex(idx, new Vector2(_controller.PolygonVertices[idx].X, val));
-					OnParamChanged();
-				};
-				row.AddChild(yEdit);
-
-				var delBtn = new Button { Text = "X" };
-				delBtn.CustomMinimumSize = new Vector2(30, 0);
-				delBtn.Pressed += () =>
-				{
-					_controller.RemovePolygonVertex(idx);
-					OnParamChanged();
-				};
-				row.AddChild(delBtn);
-
-				_vertexList.AddChild(row);
-			}
-		}
-
-		private void RefreshJson()
-		{
-			_jsonEdit.Text = _controller.ToJson();
-		}
-
-		private void OnLoadJson()
-		{
-			var dialog = new FileDialog();
-			dialog.FileMode = FileDialog.FileModeEnum.OpenFile;
-			dialog.AddFilter("*.json", "JSON Files");
-			dialog.AddFilter("*.interactive", "Interactive Files");
-			dialog.FileSelected += path =>
-			{
-				var file = FileAccess.Open(path, FileAccess.ModeFlags.Read);
-				if (file != null)
-				{
-					var text = file.GetAsText();
-					file.Close();
-					if (_controller.FromJson(text))
-					{
-						WriteControllerToSidebar();
-						UpdateVertexList();
-						RebuildHandles();
-						UpdateColliderOverlay();
-						RefreshJson();
-						MarkClean();
-					}
-					else
-					{
-						GD.PrintErr("Failed to parse JSON");
-					}
-				}
-				dialog.QueueFree();
-			};
-			dialog.Canceled += () => dialog.QueueFree();
-			AddChild(dialog);
-			dialog.PopupCentered(new Vector2I(800, 600));
-		}
-
-		private void OnImportFromMod()
-		{
-			var ids = Interactives.Collect();
-			if (ids.Count == 0)
-			{
-				GD.Print("No interactive definitions found in mods");
-				return;
-			}
-
-			var dialog = new AcceptDialog { Title = Tr("tools/interactive_editor/dlg_select_def") };
-			dialog.Size = new Vector2I(400, 300);
-
-			var list = new ItemList();
-			list.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			list.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-			foreach (var kv in ids)
-				list.AddItem(kv.Key);
-			list.ItemActivated += idx =>
-			{
-				var id = list.GetItemText((int)idx);
-				var def = InteractiveFactory.Instance.Get(id);
-				if (def != null)
-				{
-					_controller.FromDefinition(def);
-					WriteControllerToSidebar();
-					UpdateVertexList();
-					RebuildHandles();
-					UpdateColliderOverlay();
-					RefreshJson();
-					MarkClean();
-				}
-				dialog.QueueFree();
-			};
-			dialog.AddChild(list);
-			AddChild(dialog);
-			dialog.PopupCentered();
-		}
-
-		private void OnSave()
-		{
-			var dialog = new FileDialog();
-			dialog.FileMode = FileDialog.FileModeEnum.SaveFile;
-			dialog.AddFilter("*.json", "JSON Files");
-			dialog.FileSelected += path =>
-			{
-				var json = _controller.ToJson();
-				var file = FileAccess.Open(path, FileAccess.ModeFlags.Write);
-				if (file != null)
-				{
-					file.StoreString(json);
-					file.Close();
-					MarkClean();
-					GD.Print($"Saved to {path}");
-				}
-				dialog.QueueFree();
-			};
-			dialog.Canceled += () => dialog.QueueFree();
-			AddChild(dialog);
-			dialog.PopupCentered(new Vector2I(800, 600));
-		}
-
-		private void OnParamChanged(string _ = null) => OnParamChanged();
-
-		protected override void Cleanup()
-		{
-			foreach (var h in _handles)
-				h.QueueFree();
-			_handles.Clear();
-		}
-	}
+    /// <summary>
+    /// Editor of interactive object definitions (<c>interactives/*.json</c>).
+    /// The author opens a file of a writable mod, sees every object of the
+    /// file over its scene background, picks one in the list or on the canvas
+    /// and edits its collider by dragging handles or typing numbers, plus its
+    /// look (texture, layer, highlight) and actions (scenario, commands, hover
+    /// commands). Saving writes the whole file back, other objects included.
+    /// <para/>
+    /// The background is chosen automatically from the scene whose scenario
+    /// adds the selected object (<c>interactive_add</c>), when that is known.
+    /// </summary>
+    public partial class InteractiveEditorWindow : ToolWindow
+    {
+        private const string InteractivesDir = "interactives";
+
+        private readonly InteractiveEditorController _controller = new();
+        private readonly List<string> _backgroundIds = new();
+        private Dictionary<string, string> _interactiveScenes;
+
+        private string _modId;
+        private string _path;
+        private bool _suppress;
+
+        private ModFileSelector _fileSelector;
+        private FilteredList _itemList;
+        private FilteredList _bgList;
+        private InteractiveEditorCanvas _canvas;
+        private CodeEdit _jsonEdit;
+
+        private Label _propsEmpty;
+        private VBoxContainer _propsBody;
+        private LineEdit _idEdit;
+        private LineEdit _textureEdit;
+        private OptionButton _layerSelect;
+        private SpinBox _zIndex;
+        private CheckBox _enabledCheck;
+        private CheckBox _visibleCheck;
+        private OptionButton _cursorSelect;
+        private OptionButton _hitTypeSelect;
+        private VBoxContainer _rectParams;
+        private VBoxContainer _circleParams;
+        private VBoxContainer _polyParams;
+        private SpinBox _rectX, _rectY, _rectW, _rectH;
+        private SpinBox _circleX, _circleY, _circleR;
+        private VBoxContainer _vertexList;
+        private ColorPickerButton _highlightColor;
+        private SpinBox _highlightScale;
+        private LineEdit _clickScenario;
+        private CodeEdit _clickCommands;
+        private LineEdit _hoverEnter;
+        private LineEdit _hoverLeave;
+
+        public InteractiveEditorWindow() : base("tools/interactive_editor/title")
+        {
+            CthangoverTheme.Apply(this);
+            BuildUI();
+            LoadBackgrounds();
+            SetHint(ToolUi.Tr("tools/interactive_editor/hint"));
+            _fileSelector.Refresh();
+        }
+
+        // ── UI construction ────────────────────────────────────────
+
+        private void BuildUI()
+        {
+            var outer = CreateFillContainer();
+            AddChild(outer);
+
+            var toolbar = CreateToolbar();
+            outer.AddChild(toolbar);
+            _fileSelector = new ModFileSelector(InteractivesDir, ".json");
+            _fileSelector.FileRequested += OnFileRequested;
+            toolbar.AddChild(_fileSelector);
+            toolbar.AddChild(ToolUi.Button("tools/common/save", Save, ButtonKind.Primary, "tools/common/save_tip"));
+            toolbar.AddChild(UiKit.Spacer());
+            var jsonToggle = ToolUi.Button("tools/common/json", null, ButtonKind.Tab, "tools/common/json_tip");
+            jsonToggle.ToggleMode = true;
+            jsonToggle.Toggled += on => _jsonEdit.Visible = on;
+            toolbar.AddChild(jsonToggle);
+
+            var main = new HSplitContainer
+            {
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill
+            };
+            outer.AddChild(main);
+
+            var left = new VBoxContainer();
+            main.AddChild(CreateSidebar(left, 260));
+            BuildLeft(left);
+
+            var centerSplit = new HSplitContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            main.AddChild(centerSplit);
+
+            var canvasColumn = new VSplitContainer
+            {
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill
+            };
+            centerSplit.AddChild(canvasColumn);
+
+            var canvasPanel = new PanelContainer
+            {
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill
+            };
+            canvasPanel.AddThemeStyleboxOverride("panel", UiKit.Frame(UiTokens.RadiusMd, UiTokens.Well, UiTokens.Line));
+            canvasColumn.AddChild(canvasPanel);
+
+            _canvas = new InteractiveEditorCanvas { Controller = _controller };
+            _canvas.Changed += OnCanvasChanged;
+            _canvas.ItemPicked += _ => RefreshAll();
+            canvasPanel.AddChild(_canvas);
+
+            _jsonEdit = ToolUi.Code(editable: false);
+            _jsonEdit.CustomMinimumSize = new Vector2(0, 160);
+            _jsonEdit.Visible = false;
+            canvasColumn.AddChild(_jsonEdit);
+
+            var right = new VBoxContainer();
+            centerSplit.AddChild(CreateSidebar(right, 330));
+            BuildProperties(right);
+        }
+
+        private void BuildLeft(VBoxContainer column)
+        {
+            column.AddChild(ToolUi.Section("tools/interactive_editor/items"));
+            _itemList = new FilteredList(180);
+            _itemList.Chosen += OnItemChosen;
+            column.AddChild(_itemList);
+
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", UiTokens.Space1);
+            column.AddChild(row);
+            AddExpanding(row, ToolUi.Button("tools/interactive_editor/add", OnAdd));
+            AddExpanding(row, ToolUi.Button("tools/interactive_editor/duplicate", OnDuplicate));
+            column.AddChild(ToolUi.Button("tools/interactive_editor/delete", OnDelete, ButtonKind.Danger));
+
+            column.AddChild(ToolUi.Section("tools/interactive_editor/background"));
+            _bgList = new FilteredList(160);
+            _bgList.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+            _bgList.Chosen += ShowBackground;
+            column.AddChild(_bgList);
+        }
+
+        private static void AddExpanding(Container parent, Control control)
+        {
+            control.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            parent.AddChild(control);
+        }
+
+        private void BuildProperties(VBoxContainer column)
+        {
+            column.AddChild(ToolUi.Section("tools/interactive_editor/props"));
+            _propsEmpty = ToolUi.Hint(ToolUi.Tr("tools/interactive_editor/none_selected"));
+            column.AddChild(_propsEmpty);
+
+            var body = new VBoxContainer();
+            body.AddThemeConstantOverride("separation", UiTokens.Space2);
+            column.AddChild(body);
+            _propsBody = body;
+
+            _idEdit = ToolUi.Field(body, "tools/interactive_editor/label_id", ToolUi.Text("crypt_spot", _ => OnIdChanged()));
+            _idEdit.AddThemeFontOverride("font", ToolUi.Mono());
+            _textureEdit = ToolUi.Field(body, "tools/interactive_editor/label_texture_key", ToolUi.Text(ToolUi.Tr("tools/interactive_editor/texture_placeholder"), _ => OnFieldsChanged()),
+                "tools/interactive_editor/texture_tip");
+
+            _layerSelect = ToolUi.Field(body, "tools/interactive_editor/label_layer", new OptionButton());
+            foreach (var layer in InteractiveEditorController.Layers)
+                _layerSelect.AddItem(layer);
+            _layerSelect.ItemSelected += _ => OnFieldsChanged();
+
+            _zIndex = ToolUi.Field(body, "tools/interactive_editor/label_z", ToolUi.Number(-100, 100, 1, _ => OnFieldsChanged()));
+
+            _cursorSelect = ToolUi.Field(body, "tools/interactive_editor/label_cursor", new OptionButton());
+            _cursorSelect.AddItem(ToolUi.Tr("tools/interactive_editor/cursor_none"));
+            _cursorSelect.AddItem("PointingHand");
+            _cursorSelect.ItemSelected += _ => OnFieldsChanged();
+
+            _enabledCheck = new CheckBox { Text = ToolUi.Tr("tools/interactive_editor/enabled") };
+            _enabledCheck.Toggled += _ => OnFieldsChanged();
+            body.AddChild(_enabledCheck);
+            _visibleCheck = new CheckBox { Text = ToolUi.Tr("tools/interactive_editor/visible") };
+            _visibleCheck.Toggled += _ => OnFieldsChanged();
+            body.AddChild(_visibleCheck);
+
+            body.AddChild(ToolUi.Section("tools/interactive_editor/collider"));
+            _hitTypeSelect = ToolUi.Field(body, "tools/interactive_editor/label_collider_type", new OptionButton());
+            foreach (var type in InteractiveEditorController.HitTypes)
+                _hitTypeSelect.AddItem(HitTypeLabel(type));
+            _hitTypeSelect.ItemSelected += OnHitTypeChanged;
+
+            _rectParams = new VBoxContainer();
+            body.AddChild(_rectParams);
+            _rectX = ToolUi.Field(_rectParams, "tools/interactive_editor/label_x", ToolUi.Number(0, 1, 0.001, _ => OnGeometryTyped()));
+            _rectY = ToolUi.Field(_rectParams, "tools/interactive_editor/label_y", ToolUi.Number(0, 1, 0.001, _ => OnGeometryTyped()));
+            _rectW = ToolUi.Field(_rectParams, "tools/interactive_editor/label_w", ToolUi.Number(0.001, 1, 0.001, _ => OnGeometryTyped()));
+            _rectH = ToolUi.Field(_rectParams, "tools/interactive_editor/label_h", ToolUi.Number(0.001, 1, 0.001, _ => OnGeometryTyped()));
+
+            _circleParams = new VBoxContainer();
+            body.AddChild(_circleParams);
+            _circleX = ToolUi.Field(_circleParams, "tools/interactive_editor/label_cx", ToolUi.Number(0, 1, 0.001, _ => OnGeometryTyped()));
+            _circleY = ToolUi.Field(_circleParams, "tools/interactive_editor/label_cy", ToolUi.Number(0, 1, 0.001, _ => OnGeometryTyped()));
+            _circleR = ToolUi.Field(_circleParams, "tools/interactive_editor/label_r", ToolUi.Number(0.001, 1, 0.001, _ => OnGeometryTyped()));
+
+            _polyParams = new VBoxContainer();
+            body.AddChild(_polyParams);
+            _polyParams.AddChild(ToolUi.Hint(ToolUi.Tr("tools/interactive_editor/polygon_hint")));
+            _vertexList = new VBoxContainer();
+            _vertexList.AddThemeConstantOverride("separation", UiTokens.Space1);
+            _polyParams.AddChild(_vertexList);
+
+            body.AddChild(ToolUi.Section("tools/interactive_editor/highlight"));
+            _highlightColor = ToolUi.Field(body, "tools/interactive_editor/label_highlight_color", new ColorPickerButton { CustomMinimumSize = new Vector2(0, 28) });
+            _highlightColor.ColorChanged += _ => OnFieldsChanged();
+            _highlightScale = ToolUi.Field(body, "tools/interactive_editor/label_highlight_scale", ToolUi.Number(0.5, 2, 0.01, _ => OnFieldsChanged()));
+
+            body.AddChild(ToolUi.Section("tools/interactive_editor/actions"));
+            _clickScenario = ToolUi.Field(body, "tools/interactive_editor/label_onclick_scenario", ToolUi.Text("scenarios/…/file.scenario", _ => OnFieldsChanged()));
+            body.AddChild(UiKit.Label(ToolUi.Tr("tools/interactive_editor/label_onclick_commands"), UiTokens.FontBodySmall, UiTokens.Muted));
+            _clickCommands = ToolUi.Code();
+            _clickCommands.GuttersDrawLineNumbers = false;
+            _clickCommands.CustomMinimumSize = new Vector2(0, 70);
+            _clickCommands.SyntaxHighlighter = ScenarioSyntaxService.CreateHighlighter();
+            _clickCommands.TextChanged += OnFieldsChanged;
+            body.AddChild(_clickCommands);
+            _hoverEnter = ToolUi.Field(body, "tools/interactive_editor/label_hover_enter", ToolUi.Text("", _ => OnFieldsChanged()));
+            _hoverLeave = ToolUi.Field(body, "tools/interactive_editor/label_hover_leave", ToolUi.Text("", _ => OnFieldsChanged()));
+        }
+
+        // ── loading & saving ───────────────────────────────────────
+
+        private void LoadBackgrounds()
+        {
+            _backgroundIds.AddRange(ModResourceService.GetBackgroundIds());
+            _bgList.SetItems(_backgroundIds);
+        }
+
+        private void ShowBackground(string id)
+        {
+            if (string.IsNullOrEmpty(id))
+                return;
+
+            _bgList.Select(id);
+            _canvas.SetBackground(ModResourceService.LoadBackgroundTexture(id));
+        }
+
+        /// <summary>Shows the background of the scene that adds the selected object, when known.</summary>
+        private void ShowSceneBackground()
+        {
+            var id = _controller.Selected?.ID;
+            if (id == null)
+                return;
+
+            _interactiveScenes ??= SceneBackgroundService.MapInteractivesToScenes();
+            if (!_interactiveScenes.TryGetValue(id, out var scene))
+                return;
+
+            var background = SceneBackgroundService.ForScene(scene);
+            if (background == null || background == _bgList.SelectedId)
+                return;
+
+            if (ModResourceService.LoadBackgroundTexture(background) == null)
+                SetStatus(string.Format(ToolUi.Tr("tools/common/background_missing"), background, scene), ToolStatusKind.Error);
+            else
+                ShowBackground(background);
+        }
+
+        private void OnFileRequested(string modId, string path)
+        {
+            RunDiscardingChanges(() => Load(modId, path), () => _fileSelector.Show(_modId, _path));
+        }
+
+        private void Load(string modId, string path)
+        {
+            _modId = modId;
+            _path = path;
+            _controller.Clear();
+            MarkClean();
+
+            if (modId == null)
+                SetStatus(ToolUi.Tr("tools/common/no_writable_mods"), ToolStatusKind.Error);
+            else if (path == null)
+                SetStatus(string.Format(ToolUi.Tr("tools/common/no_files"), modId));
+            else
+            {
+                try
+                {
+                    var text = ModFileService.ReadText(modId, path);
+                    _controller.FromJson(text);
+                    SetStatus(string.Format(ToolUi.Tr(string.IsNullOrEmpty(text) ? "tools/common/new_file_status" : "tools/common/loaded"), modId + "/" + path));
+                }
+                catch (Exception ex)
+                {
+                    SetStatus($"{ToolUi.Tr("tools/common/load_error")}: {ex.Message}", ToolStatusKind.Error);
+                    GameLogger.Log("INTERACTIVE_EDITOR", $"load failed for '{modId}/{path}': {ex.Message}", LogLevel.Error);
+                }
+            }
+
+            _fileSelector.Show(_modId, _path);
+            RefreshAll();
+            ShowSceneBackground();
+        }
+
+        /// <summary>Ctrl+S.</summary>
+        protected override void OnSaveShortcut() => Save();
+
+        private void Save()
+        {
+            if (_path == null)
+            {
+                SetStatus(ToolUi.Tr("tools/common/no_file_to_save"), ToolStatusKind.Error);
+                return;
+            }
+
+            var problem = Validate();
+            if (problem != null)
+            {
+                SetStatus(problem, ToolStatusKind.Error);
+                return;
+            }
+
+            if (!ModFileService.WriteText(_modId, _path, _controller.ToJson()))
+            {
+                SetStatus(ToolUi.Tr("tools/common/readonly"), ToolStatusKind.Error);
+                return;
+            }
+
+            MarkClean();
+            _fileSelector.Show(_modId, _path);
+            SetStatus(string.Format(ToolUi.Tr("tools/common/saved"), _modId + "/" + _path), ToolStatusKind.Ok);
+        }
+
+        /// <summary>First blocking problem of the file (empty/duplicate ID, polygon with &lt; 3 vertices), or null.</summary>
+        private string Validate()
+        {
+            foreach (var item in _controller.Items)
+            {
+                if (string.IsNullOrWhiteSpace(item.ID))
+                    return ToolUi.Tr("tools/interactive_editor/id_empty");
+                if (item.HitArea.Type == "polygon" && (item.HitArea.Vertices?.Length ?? 0) < 3)
+                    return string.Format(ToolUi.Tr("tools/interactive_editor/polygon_too_small"), item.ID);
+            }
+
+            var duplicate = _controller.Items.GroupBy(i => i.ID, StringComparer.OrdinalIgnoreCase).FirstOrDefault(g => g.Count() > 1);
+            return duplicate != null ? $"{ToolUi.Tr("tools/interactive_editor/duplicate_id")} {duplicate.Key}" : null;
+        }
+
+        // ── list actions ───────────────────────────────────────────
+
+        private void OnItemChosen(string indexText)
+        {
+            if (_suppress || !int.TryParse(indexText, out var index))
+                return;
+
+            _controller.Select(index);
+            RefreshAll();
+            ShowSceneBackground();
+        }
+
+        private void OnAdd()
+        {
+            if (_path == null)
+            {
+                SetStatus(ToolUi.Tr("tools/common/no_file_to_save"), ToolStatusKind.Error);
+                return;
+            }
+
+            _controller.Add();
+            Changed();
+            RefreshAll();
+        }
+
+        private void OnDuplicate()
+        {
+            if (_controller.DuplicateSelected() == null)
+                return;
+            Changed();
+            RefreshAll();
+        }
+
+        private void OnDelete()
+        {
+            var item = _controller.Selected;
+            if (item == null)
+                return;
+
+            ShowConfirm("tools/interactive_editor/delete", "tools/interactive_editor/delete_confirm", () =>
+            {
+                _controller.RemoveSelected();
+                Changed();
+                RefreshAll();
+                SetStatus(string.Format(ToolUi.Tr("tools/interactive_editor/deleted"), item.ID));
+            });
+        }
+
+        /// <summary>Delete removes the selected object (with confirmation).</summary>
+        protected override bool HandleKey(InputEventKey key)
+        {
+            if (key.Keycode != Key.Delete || _controller.Selected == null)
+                return false;
+            OnDelete();
+            return true;
+        }
+
+        // ── property editing ───────────────────────────────────────
+
+        private void OnIdChanged()
+        {
+            var item = _controller.Selected;
+            if (_suppress || item == null)
+                return;
+
+            item.ID = _idEdit.Text.Trim();
+            Changed();
+            RefreshItemList();
+        }
+
+        private void OnFieldsChanged()
+        {
+            var item = _controller.Selected;
+            if (_suppress || item == null)
+                return;
+
+            item.Texture = NullIfEmpty(_textureEdit.Text);
+            item.Layer = InteractiveEditorController.Layers[Math.Max(0, _layerSelect.Selected)];
+            item.ZIndex = (int)_zIndex.Value;
+            item.Enabled = _enabledCheck.ButtonPressed;
+            item.Visible = _visibleCheck.ButtonPressed;
+            item.Cursor = _cursorSelect.Selected == 1 ? "PointingHand" : null;
+            item.Highlight.ColorHex = "#" + _highlightColor.Color.ToHtml(true);
+            item.Highlight.Scale = (float)_highlightScale.Value;
+
+            var commands = _clickCommands.Text.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
+            var scenario = NullIfEmpty(_clickScenario.Text);
+            item.Actions.OnClick = scenario != null || commands.Length > 0
+                ? new ClickAction { Scenario = scenario, Commands = commands.Length > 0 ? commands : null }
+                : null;
+            item.Actions.OnHoverEnter = NullIfEmpty(_hoverEnter.Text);
+            item.Actions.OnHoverLeave = NullIfEmpty(_hoverLeave.Text);
+            Changed();
+        }
+
+        private void OnHitTypeChanged(long index)
+        {
+            var item = _controller.Selected;
+            if (_suppress || item == null)
+                return;
+
+            InteractiveEditorController.SetHitType(item, InteractiveEditorController.HitTypes[index]);
+            Changed();
+            RefreshAll();
+        }
+
+        private void OnGeometryTyped()
+        {
+            var hit = _controller.Selected?.HitArea;
+            if (_suppress || hit == null)
+                return;
+
+            if (hit.Type == "circle")
+            {
+                hit.X = (float)_circleX.Value;
+                hit.Y = (float)_circleY.Value;
+                hit.Radius = (float)_circleR.Value;
+            }
+            else if (hit.Type == "rect")
+            {
+                hit.X = (float)_rectX.Value;
+                hit.Y = (float)_rectY.Value;
+                hit.Width = (float)_rectW.Value;
+                hit.Height = (float)_rectH.Value;
+            }
+
+            Changed();
+            _canvas.RebuildHandles();
+            _canvas.QueueRedraw();
+        }
+
+        private void OnCanvasChanged()
+        {
+            Changed();
+            _suppress = true;
+            WriteGeometry(_controller.Selected?.HitArea);
+            _suppress = false;
+        }
+
+        private void Changed()
+        {
+            SetDirty();
+            if (_jsonEdit.Visible)
+                _jsonEdit.Text = _controller.ToJson();
+        }
+
+        // ── refresh ────────────────────────────────────────────────
+
+        private void RefreshAll()
+        {
+            RefreshItemList();
+            _suppress = true;
+            WriteSidebar();
+            _suppress = false;
+            _jsonEdit.Text = _controller.ToJson();
+            _canvas.RebuildHandles();
+            _canvas.QueueRedraw();
+        }
+
+        private void RefreshItemList()
+        {
+            var items = _controller.Items
+                .Select((item, i) => (i.ToString(), (string.IsNullOrEmpty(item.ID) ? "?" : item.ID) + "  ·  " + HitTypeLabel(item.HitArea.Type), (Texture2D)null));
+            _itemList.SetItems(items);
+            _itemList.Select(_controller.SelectedIndex >= 0 ? _controller.SelectedIndex.ToString() : null);
+        }
+
+        private void WriteSidebar()
+        {
+            var item = _controller.Selected;
+            _propsEmpty.Visible = item == null;
+            _propsBody.Visible = item != null;
+            if (item == null)
+                return;
+
+            _idEdit.Text = item.ID ?? string.Empty;
+            _textureEdit.Text = item.Texture ?? string.Empty;
+            _layerSelect.Select(Math.Max(0, Array.IndexOf(InteractiveEditorController.Layers, item.Layer)));
+            _zIndex.Value = item.ZIndex;
+            _enabledCheck.ButtonPressed = item.Enabled;
+            _visibleCheck.ButtonPressed = item.Visible;
+            _cursorSelect.Select(string.IsNullOrEmpty(item.Cursor) ? 0 : 1);
+            _hitTypeSelect.Select(Math.Max(0, Array.IndexOf(InteractiveEditorController.HitTypes, item.HitArea.Type)));
+            _highlightColor.Color = item.Highlight.Color;
+            _highlightScale.Value = item.Highlight.Scale;
+            _clickScenario.Text = item.Actions.OnClick?.Scenario ?? string.Empty;
+            _clickCommands.Text = item.Actions.OnClick?.Commands != null ? string.Join("\n", item.Actions.OnClick.Commands) : string.Empty;
+            _hoverEnter.Text = item.Actions.OnHoverEnter ?? string.Empty;
+            _hoverLeave.Text = item.Actions.OnHoverLeave ?? string.Empty;
+            WriteGeometry(item.HitArea);
+        }
+
+        private void WriteGeometry(HitAreaDefinition hit)
+        {
+            if (hit == null)
+                return;
+
+            _rectParams.Visible = hit.Type == "rect";
+            _circleParams.Visible = hit.Type == "circle";
+            _polyParams.Visible = hit.Type == "polygon";
+
+            _rectX.Value = hit.X;
+            _rectY.Value = hit.Y;
+            _rectW.Value = hit.Width;
+            _rectH.Value = hit.Height;
+            _circleX.Value = hit.X;
+            _circleY.Value = hit.Y;
+            _circleR.Value = hit.Radius;
+            RefreshVertexList(hit);
+        }
+
+        /// <summary>X/Y spin rows per polygon vertex; handlers read the vertex at change time.</summary>
+        private void RefreshVertexList(HitAreaDefinition hit)
+        {
+            var vertices = hit.Type == "polygon" ? hit.Vertices ?? Array.Empty<Vector2>() : Array.Empty<Vector2>();
+            var rows = _vertexList.GetChildren();
+
+            // Reuse rows while dragging so focus and scroll are not lost on every motion.
+            if (rows.Count == vertices.Length)
+            {
+                for (var i = 0; i < vertices.Length; i++)
+                {
+                    var row = rows[i];
+                    ((SpinBox)row.GetChild(1)).SetValueNoSignal(vertices[i].X);
+                    ((SpinBox)row.GetChild(2)).SetValueNoSignal(vertices[i].Y);
+                }
+                return;
+            }
+
+            foreach (var child in rows)
+                child.QueueFree();
+
+            for (var i = 0; i < vertices.Length; i++)
+            {
+                var index = i;
+                var row = new HBoxContainer();
+                row.AddThemeConstantOverride("separation", UiTokens.Space1);
+                var number = UiKit.Label((i + 1).ToString(), UiTokens.FontSmall, UiTokens.Faint);
+                number.CustomMinimumSize = new Vector2(20, 0);
+                row.AddChild(number);
+
+                var x = ToolUi.Number(0, 1, 0.001, null);
+                x.Value = vertices[i].X;
+                x.ValueChanged += v => OnVertexTyped(index, (float)v, null);
+                row.AddChild(x);
+
+                var y = ToolUi.Number(0, 1, 0.001, null);
+                y.Value = vertices[i].Y;
+                y.ValueChanged += v => OnVertexTyped(index, null, (float)v);
+                row.AddChild(y);
+
+                _vertexList.AddChild(row);
+            }
+        }
+
+        private void OnVertexTyped(int index, float? x, float? y)
+        {
+            var hit = _controller.Selected?.HitArea;
+            if (_suppress || hit?.Vertices == null || index >= hit.Vertices.Length)
+                return;
+
+            var v = hit.Vertices[index];
+            hit.Vertices[index] = new Vector2(x ?? v.X, y ?? v.Y);
+            Changed();
+            _canvas.RebuildHandles();
+            _canvas.QueueRedraw();
+        }
+
+        private static string HitTypeLabel(string type) => ToolUi.Tr(type switch
+        {
+            "circle" => "tools/interactive_editor/hit_circle",
+            "polygon" => "tools/interactive_editor/hit_polygon",
+            _ => "tools/interactive_editor/hit_rect"
+        });
+
+        private static string NullIfEmpty(string text)
+        {
+            var trimmed = text?.Trim();
+            return string.IsNullOrEmpty(trimmed) ? null : trimmed;
+        }
+    }
 }
-
