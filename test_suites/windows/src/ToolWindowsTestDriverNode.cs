@@ -23,7 +23,9 @@ namespace Cthangover.Tools.Tests.Windows
     /// Launched as the <c>novel_editor</c> game (<c>--game=novel_editor --new</c>)
     /// it first waits for the collection's entry scene, the
     /// <see cref="NovelEditorHub"/>, and checks it lists a launcher button for
-    /// every registered tool before opening the windows.
+    /// every registered tool before opening the windows; after the windows it
+    /// plays a scenario from the editor and checks that both the scenario's
+    /// end and Stop return to the hub (<see cref="ScenarioPlayReturnCheck"/>).
     /// </summary>
     public partial class ToolWindowsTestDriverNode : Node
     {
@@ -42,6 +44,8 @@ namespace Cthangover.Tools.Tests.Windows
         private double _elapsed;
         private bool _finished;
         private Window _window;
+        private bool _inHub;
+        private ScenarioPlayReturnCheck _playCheck;
         private readonly ToolWindowsErrorLogger _errors = new();
 
         /// <summary>Creates the driver; <paramref name="shotsDir"/> null or empty disables screenshots.</summary>
@@ -73,15 +77,22 @@ namespace Cthangover.Tools.Tests.Windows
                 if (!Boot.IsReady || tree?.CurrentScene == null)
                     return;
 
-                var inHub = ActiveGame.Id == NovelEditorHub.SceneName;
-                if (inHub && tree.CurrentScene is not NovelEditorHub)
+                _inHub = ActiveGame.Id == NovelEditorHub.SceneName;
+                if (_inHub && tree.CurrentScene is not NovelEditorHub)
                     return;
 
                 _tools.AddRange(ToolFactory.Instance.GetAll());
                 Check(_tools.Count > 0, $"tools registered ({_tools.Count})");
-                if (inHub)
+                if (_inHub)
                     CheckHub(tree.CurrentScene);
                 OpenNext();
+                return;
+            }
+
+            if (_playCheck != null)
+            {
+                if (_playCheck.Tick(GetTree()))
+                    Finish();
                 return;
             }
 
@@ -112,7 +123,10 @@ namespace Cthangover.Tools.Tests.Windows
             _toolIndex++;
             if (_toolIndex >= _tools.Count)
             {
-                Finish();
+                if (_inHub)
+                    _playCheck = new ScenarioPlayReturnCheck(Check);
+                else
+                    Finish();
                 return;
             }
 

@@ -1,0 +1,5 @@
+scene: home_basement
+priority: 0
+---
+delay 60 hidden=true
+end
