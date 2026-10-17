@@ -1,0 +1,10 @@
+{
+  "name": "Tool Windows Test",
+  "description": "Integration test of the tools mod: opens every registered tool window through ToolFactory exactly like the toolbar button does, checks the chrome and the window's own smoke checks, optionally saves a screenshot of each window (--shots=<dir>) and reports [TEST_RESULT]. Activated by --itest=tools_windows.",
+  "sources": [
+    "src/*.cs"
+  ],
+  "depends": [
+    "visual_novel_core>=1"
+  ]
+}
