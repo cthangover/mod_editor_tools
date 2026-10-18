@@ -18,7 +18,7 @@
       "role": "tools",
       "description": "Editor windows and the launcher screen that lists them.",
       "locale": [ { "lang": "ru", "name": "Редакторы", "description": "Окна редакторов и стартовый экран со списком." } ],
-      "mods": ["tools>=1"]
+      "mods": ["editor_tools>=1"]
     },
     {
       "id": "novel_engine",
@@ -26,7 +26,7 @@
       "role": "engine",
       "description": "Scenes, scenarios, dialogs, interactive objects, effects, time and lighting, the world map: what the editors preview and play.",
       "locale": [ { "lang": "ru", "name": "Движок новеллы", "description": "Сцены, сценарии, диалоги, интерактив, эффекты, время и свет, карта мира: то, что редакторы показывают и проигрывают." } ],
-      "mods": ["visual_novel_core>=1", "base2d>=1", "dialog_base>=1", "interactive_base>=1", "effects_base>=1", "time_base>=1", "map_base>=1"]
+      "mods": ["cthangover_story>=1", "shell2d_base>=1", "dialog_base>=1", "interactive_base>=1", "effects_base>=1", "time_base>=1", "map_base>=1"]
     },
     {
       "id": "story",
@@ -35,7 +35,7 @@
       "description": "The bundled story content to edit: Murakami's line and the starter party.",
       "locale": [ { "lang": "ru", "name": "Сюжет", "description": "Встроенный сюжет для правки: линия Мураками и стартовая партия." } ],
       "optional": true,
-      "mods": ["murakami>=1", "starter_party>=1"]
+      "mods": ["cthangover_murakami>=1", "cthangover_party>=1"]
     },
     {
       "id": "validation",

@@ -1,6 +1,6 @@
 {
-  "id": "tools",
-  "name": "Tools",
+  "id": "editor_tools",
+  "name": "Editor Tools",
   "version": "1.0.0",
   "author": "ct",
   "description": "Developer toolbox of ToolBox windows: scenario graph editor, map editor with zones, scene builder with inspector, interactive and light editors, and the mod catalog export window.",
@@ -8,7 +8,7 @@
   "sources": [
     "src/**/*.cs"
   ],
-  "depends": ["dialog_base>=1", "interactive_base>=1", "time_base>=1", "map_base>=1", "interface>=1"],
+  "depends": ["dialog_base>=1", "interactive_base>=1", "time_base>=1", "map_base>=1", "ui_base>=1"],
   "test_suites": [
     {"id": "windows", "activate": ["--itest=tools_windows"]}
   ]
