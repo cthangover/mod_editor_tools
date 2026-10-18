@@ -1,0 +1,10 @@
+{
+  "name": "In-game Play-test Test",
+  "description": "Integration test of the scenario editor opened inside a running game (the novel template with the editors added): plays a scenario from the editor and checks the play-test stays in the game until Stop, then Stop returns to the game with the editor visible — never to the main menu. Activated by --itest=ingame_play.",
+  "sources": [
+    "src/*.cs"
+  ],
+  "depends": [
+    "my_novel_game>=1"
+  ]
+}
