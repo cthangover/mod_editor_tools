@@ -37,6 +37,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
         private bool _playActive;
         private string _returnRoute;
+        private string _returnScene;
         private CanvasLayer _stopOverlay;
 
         public ScenarioEditorWindow() : base("tools/scenario_editor/title")
@@ -302,11 +303,19 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             var current = sceneService?.CurrentGodotSceneName;
             _returnRoute = !string.IsNullOrEmpty(current) && SceneRouteRegistry.TryGet(current, out _) ? current : null;
 
+            // Opened inside a running game: come back into the scene the
+            // player was in, not to the main menu (there is no way back to the
+            // editor from there).
+            var sceneManager = GetNodeOrNull<SceneManager>("/root/SceneManager");
+            var gameScene = sceneManager?.CurrentSceneName;
+            _returnScene = _returnRoute == null && current != "mainmenu" && !string.IsNullOrEmpty(gameScene) && sceneManager.HasScene(gameScene)
+                ? gameScene
+                : null;
+
             _stopOverlay = CreateStopOverlay();
             var tree = Godot.Engine.GetMainLoop() as SceneTree;
             tree?.Root.AddChild(_stopOverlay);
 
-            var sceneManager = GetNodeOrNull<SceneManager>("/root/SceneManager");
             if (sceneManager != null)
             {
                 sceneManager.Initialize();
@@ -336,11 +345,23 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             }
 
             var sceneService = GetNodeOrNull<GodotSceneService>("/root/GodotSceneService");
+            var sceneManager = GetNodeOrNull<SceneManager>("/root/SceneManager");
             if (_returnRoute != null && SceneRouteRegistry.TryGet(_returnRoute, out var route))
+            {
                 sceneService?.SwitchRoute(route);
+            }
+            else if (_returnScene != null && sceneManager != null)
+            {
+                sceneManager.PendingSceneName = _returnScene;
+                sceneService?.LoadShell();
+            }
             else
+            {
                 sceneService?.SwitchToMenu();
+            }
+
             _returnRoute = null;
+            _returnScene = null;
             SetStatus(ToolUi.Tr("tools/scenario_editor/play_stopped"));
         }
 
