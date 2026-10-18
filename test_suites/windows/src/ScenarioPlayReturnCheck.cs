@@ -22,7 +22,7 @@ namespace Cthangover.Tools.Tests.Windows
     /// </summary>
     public class ScenarioPlayReturnCheck
     {
-        private const string SuiteModId = "tools__windows";
+        private const string SuiteModId = "editor_tools__windows";
         private const string ScenarioPath = "scenarios/playtest_return.scenario";
         private const int ShellSettleTicks = 3;
 

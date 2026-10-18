@@ -16,7 +16,7 @@
       "locale": [
         { "lang": "ru", "name": "Редактор сценариев", "description": "Графовые инструменты для создания сценариев и сцен." }
       ],
-      "mods": ["tools>=1"]
+      "mods": ["editor_tools>=1"]
     },
     {
       "id": "validation",
