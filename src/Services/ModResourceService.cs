@@ -46,6 +46,25 @@ namespace Cthangover.Tools.Services
             return ids;
         }
 
+        /// <summary>Ids of every sound (group <c>sounds</c>, path without extension): the choices for a scene's ambient.</summary>
+        public static List<string> GetSoundIds()
+        {
+            var ids = new List<string>();
+            var exts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var ext in ModConfig.Instance.AudioExtensions)
+                exts.Add(ext);
+
+            foreach (var id in Files.Collect("sounds").Keys)
+            {
+                var ext = Path.GetExtension(id);
+                if (exts.Contains(ext))
+                    ids.Add(id.Substring(0, id.Length - ext.Length));
+            }
+
+            ids.Sort(StringComparer.OrdinalIgnoreCase);
+            return ids;
+        }
+
         private static HashSet<string> GetExt()
         {
             var set = new HashSet<string>();

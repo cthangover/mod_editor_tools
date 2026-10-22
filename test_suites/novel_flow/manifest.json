@@ -1,0 +1,10 @@
+{
+  "name": "Novel Flow Test",
+  "description": "End-to-end authoring test on the novel template with the editors added, using only the editors' UI: opens the scene editor from the in-game toolbar, creates a new scene with a background, writes its scenario (a way back to the town) in the scenario editor, adds a way to it to the town's scenario, goes to the town from the scene editor and walks town -> new scene -> town through the real dialog choices. Restores the game's files at the end. Activated by --itest=novel_flow; --shots=<dir> saves screenshots (windowed runs only).",
+  "sources": [
+    "src/*.cs"
+  ],
+  "depends": [
+    "my_novel_game>=1"
+  ]
+}

@@ -277,6 +277,21 @@ namespace Cthangover.Tools.Services
             return true;
         }
 
+        /// <summary>
+        /// Creates <c>scenarios/&lt;scene&gt;[_n].scenario</c> in a folder mod: a header bound to
+        /// <paramref name="scene"/> and one line of text to replace. Returns the file key, or
+        /// null when the mod is not writable.
+        /// </summary>
+        public static string CreateForScene(string modId, string scene, string firstLine)
+        {
+            var path = $"{ScenariosDir}/{scene}{ScenarioExtension}";
+            for (var n = 2; ModManager.Instance.ReadFileText(modId, path) != null; n++)
+                path = $"{ScenariosDir}/{scene}_{n}{ScenarioExtension}";
+
+            var text = $"scene: {scene}\npriority: 10\n---\n{firstLine}\nend\n";
+            return ModFileService.WriteText(modId, path, text) ? MakeKey(modId, path) : null;
+        }
+
         /// <summary>Absolute filesystem path of a scenario file, or <c>null</c> for zip-backed mods.</summary>
         public static string GetAbsolutePath(string modId, string relativePath)
         {
