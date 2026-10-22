@@ -36,6 +36,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
         private Label _filePathLabel;
 
         private bool _playActive;
+        private string _pendingKey;
         private string _returnRoute;
         private string _returnScene;
         private CanvasLayer _stopOverlay;
@@ -47,10 +48,31 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
             SetHint(ToolUi.Tr("tools/scenario_editor/hint"));
         }
 
-        /// <summary>Opens with the graph view so the editor starts on the cross-scene map.</summary>
+        /// <summary>Opens with the graph view so the editor starts on the cross-scene map, or on the file asked for by <see cref="OpenScenario"/>.</summary>
         public override void _Ready()
         {
             _editTabs.SetViewToGraph();
+            if (_pendingKey != null)
+                OpenScenario(_pendingKey);
+        }
+
+        /// <summary>
+        /// Opens a scenario file (key <c>mod:path</c>) in a text tab and selects it in the
+        /// tree — for other tools, e.g. the scene editor's "open" button. Before the window
+        /// is in the tree the key waits for <see cref="_Ready"/>, which would otherwise
+        /// switch the view back to the graph.
+        /// </summary>
+        public void OpenScenario(string key)
+        {
+            if (!IsInsideTree())
+            {
+                _pendingKey = key;
+                return;
+            }
+
+            _pendingKey = null;
+            _fileTreePanel.SelectFile(key);
+            _editTabs.OpenFile(key);
         }
 
         /// <summary>Returns from play-test mode as soon as the in-game test play ends.</summary>
@@ -222,6 +244,9 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                 }
 
                 _editTabs.SaveCurrentFile();
+                // The running game caches scenario headers and texts: drop them, so a new or
+                // edited scenario plays on the next entry into its scene without a mod reload.
+                SceneFileService.RefreshGame();
                 SetStatus(string.Format(ToolUi.Tr("tools/common/saved"), ScenarioFileService.GetDisplayPath(modId, relativePath)), ToolStatusKind.Ok);
                 _infoPanel.Update(text);
                 _thumbPanel.Load(text);

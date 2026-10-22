@@ -1,9 +1,14 @@
 using System;
+using System.IO;
 using System.Linq;
+using Cthangover.Core.Scenes;
 using Cthangover.Core.UI.Tool.LightEditor;
 using Cthangover.Core.UI.Tool.ScenarioEditor;
 using Cthangover.Tools.InteractiveEditor;
+using Cthangover.Tools.Common;
 using Cthangover.Tools.MapEditor;
+using Cthangover.Tools.SceneEditor;
+using Cthangover.Tools.Services;
 using Godot;
 
 namespace Cthangover.Tools.Tests.Windows
@@ -30,6 +35,9 @@ namespace Cthangover.Tools.Tests.Windows
                     break;
                 case "light_editor":
                     LightAdd(window, check);
+                    break;
+                case "scene_editor":
+                    SceneCreate(window, check);
                     break;
                 case "scenario_editor":
                     var tree = Find<ScenarioFileTreePanel>(window)?.FindChildren("*", nameof(Tree), true, false).OfType<Tree>().FirstOrDefault();
@@ -102,6 +110,78 @@ namespace Cthangover.Tools.Tests.Windows
             check(canvas.Controller.Lights.Count == before + 1 && light != null
                   && Mathf.Abs(light.X - 0.75f) < 0.01f && Mathf.Abs(light.Y - 0.25f) < 0.01f,
                 "light_editor: double-click adds a light at the clicked point");
+        }
+
+        /// <summary>
+        /// Creates a scene the way an author does — New scene, a name, the test fixture mod,
+        /// a double-clicked background, Save — and checks that the running game knows it and
+        /// that no scenario was made for it (a scene may hold only interactives); then removes
+        /// the files again. The scene goes
+        /// into editor_tools itself: it is always loaded with the window, while a test fixture
+        /// mod is not (--all-mods skips fixtures). Skipped when the mod is not a folder mod.
+        /// </summary>
+        private static void SceneCreate(Window window, Action<bool, string> check)
+        {
+            const string mod = "editor_tools";
+            const string name = "zz_tools_test_scene";
+            var lists = window.FindChildren("*", "", true, false).OfType<FilteredList>().ToList();
+            check(lists.Count == 2 && lists[0].Count > 0, $"scene_editor: scene list shows the game's scenes ({(lists.Count > 0 ? lists[0].Count : 0)})");
+            var modSelect = window.FindChildren("*", "", true, false).OfType<OptionButton>()
+                .FirstOrDefault(o => Enumerable.Range(0, o.ItemCount).Any(i => o.GetItemText(i) == mod));
+            if (modSelect == null || lists.Count < 2 || lists[1].Count == 0)
+                return;
+
+            var scenePath = ModFileService.GetWritablePath(mod, SceneFileEntry.PathFor(name));
+            var scenarioPath = ModFileService.GetWritablePath(mod, "scenarios/" + name + ".scenario");
+            try
+            {
+                DeleteLeftovers(scenePath, scenarioPath);
+                PressButton(window, "tools/scene_editor/new_scene");
+                var nameEdit = window.FindChildren("*", "", true, false).OfType<LineEdit>().First(e => e.PlaceholderText == "my_scene");
+                nameEdit.Text = name;
+                nameEdit.EmitSignal(LineEdit.SignalName.TextChanged, name);
+                var index = Enumerable.Range(0, modSelect.ItemCount).First(i => modSelect.GetItemText(i) == mod);
+                modSelect.Select(index);
+                modSelect.EmitSignal(OptionButton.SignalName.ItemSelected, index);
+                var picker = lists[1].FindChildren("*", "", true, false).OfType<ItemList>().First();
+                picker.EmitSignal(ItemList.SignalName.ItemActivated, 0);
+                PressButton(window, "tools/common/save");
+
+                var manager = window.GetTree().Root.GetNodeOrNull<SceneManager>("SceneManager");
+                check(File.Exists(scenePath) && File.ReadAllText(scenePath).Contains("\"defaultBackground\""), "scene_editor: Save writes the scene file with its background");
+                check(!File.Exists(scenarioPath), "scene_editor: a new scene is saved without a scenario");
+                check(manager?.HasScene(name) == true, "scene_editor: the running game knows the new scene without a reload");
+            }
+            finally
+            {
+                DeleteLeftovers(scenePath, scenarioPath);
+                SceneFileService.RefreshGame();
+            }
+        }
+
+        /// <summary>Removes the test scene's files and the folders they alone needed (editor_tools has no scenes of its own).</summary>
+        private static void DeleteLeftovers(string scenePath, string scenarioPath)
+        {
+            foreach (var path in new[] { scenePath, scenarioPath })
+            {
+                if (path != null && File.Exists(path))
+                    File.Delete(path);
+                DeleteIfEmpty(Path.GetDirectoryName(path));
+            }
+        }
+
+        /// <summary>Deletes a folder left empty by the test.</summary>
+        private static void DeleteIfEmpty(string directory)
+        {
+            if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+                Directory.Delete(directory);
+        }
+
+        private static void PressButton(Node root, string key)
+        {
+            var text = TranslationServer.Translate(key).ToString();
+            var button = root.FindChildren("*", "", true, false).OfType<Button>().First(b => b.Text == text);
+            button.EmitSignal(BaseButton.SignalName.Pressed);
         }
 
         private static void Click(Control target, Vector2 local, bool doubleClick)
