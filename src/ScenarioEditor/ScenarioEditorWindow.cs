@@ -246,7 +246,7 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
                 _editTabs.SaveCurrentFile();
                 // The running game caches scenario headers and texts: drop them, so a new or
                 // edited scenario plays on the next entry into its scene without a mod reload.
-                SceneFileService.RefreshGame();
+                SceneManager.ReloadContent();
                 SetStatus(string.Format(ToolUi.Tr("tools/common/saved"), ScenarioFileService.GetDisplayPath(modId, relativePath)), ToolStatusKind.Ok);
                 _infoPanel.Update(text);
                 _thumbPanel.Load(text);

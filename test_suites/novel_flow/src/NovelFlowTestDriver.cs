@@ -107,7 +107,7 @@ namespace Cthangover.Tools.Tests.NovelFlow
                     townOriginal = ModFileService.ReadText(Mod, TownScenario);
                     File.WriteAllText(ProjectSettings.GlobalizePath(Backup), townOriginal ?? string.Empty);
                     DeleteParkFiles();
-                    SceneFileService.RefreshGame();
+                    SceneManager.ReloadContent();
                     Check(townOriginal != null && !Scenes.HasScene(Park), "the novel runs in the town, no park yet");
                     OpenToolFromToolbar("tools/scene_editor/title");
                     Next();
@@ -351,7 +351,7 @@ namespace Cthangover.Tools.Tests.NovelFlow
                 ModFileService.WriteText(Mod, TownScenario, townOriginal);
             File.Delete(ProjectSettings.GlobalizePath(Backup));
             DeleteParkFiles();
-            SceneFileService.RefreshGame();
+            SceneManager.ReloadContent();
             GameLogger.Log("TEST", $"[TEST_RESULT] name=novel_flow passed={passed} failed={failures.Count}");
             GetTree().Quit(failures.Count == 0 ? 0 : 1);
         }

@@ -10,11 +10,9 @@ namespace Cthangover.Tools.Services
 {
     /// <summary>
     /// Scene files (<c>scenes/**.json</c>) of the loaded mods for the scene editor: reading
-    /// them per mod in load order (the order the game merges them in), writing one, and
-    /// making the running game see the change at once. The game caches scene definitions
-    /// and scenario headers; <see cref="RefreshGame"/> drops those caches and lets
-    /// <see cref="SceneManager"/> rescan, the same steps the scenario studio takes after
-    /// creating a scene in its layer, so a new scene can be entered without a mod reload.
+    /// them per mod in load order (the order the game merges them in), writing and deleting
+    /// one. After a write the caller runs <see cref="SceneManager.ReloadContent"/>, so a new
+    /// scene can be entered without a mod reload.
     /// </summary>
     public static class SceneFileService
     {
@@ -60,15 +58,6 @@ namespace Cthangover.Tools.Services
                 return false;
             File.Delete(path);
             return true;
-        }
-
-        /// <summary>Makes the running game re-read scene files and scenario headers.</summary>
-        public static void RefreshGame()
-        {
-            ScenarioDefs.Invalidate();
-            ModManager.Instance.GetResolver<SceneDefinitionResolver>()?.ClearCache();
-            AppServices.Current.SceneDefs.Clear();
-            SceneManager.RescanScenes();
         }
 
         private static void Collect(IModFileProvider provider, string modId, string directory, List<SceneFileEntry> result)

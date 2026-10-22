@@ -29,7 +29,7 @@ namespace Cthangover.Tools.SceneEditor
     /// one of them — the file of the mod chosen in "Save to": the scene's own file when
     /// that mod defines it, otherwise a new file that adds to a foreign scene without
     /// touching the foreign mod. Backgrounds of the other files are shown locked, with
-    /// their mod. After saving the game re-reads scenes (<see cref="SceneFileService.RefreshGame"/>),
+    /// their mod. After saving the game re-reads scenes (<see cref="SceneManager.ReloadContent"/>),
     /// so a new scene can be entered at once with "Go to scene".
     /// </summary>
     public partial class SceneEditorWindow : ToolWindow
@@ -466,7 +466,7 @@ namespace Cthangover.Tools.SceneEditor
             }
 
             var created = _isNew;
-            SceneFileService.RefreshGame();
+            SceneManager.ReloadContent();
             var name = _sceneName;
             var mod = _target.ModId;
             LoadSources();
@@ -496,7 +496,7 @@ namespace Cthangover.Tools.SceneEditor
             }
 
             var path = _target.ModId + "/" + _target.RelativePath;
-            SceneFileService.RefreshGame();
+            SceneManager.ReloadContent();
             LoadSources();
             if (FilesOf(_sceneName).Any())
             {
@@ -558,7 +558,7 @@ namespace Cthangover.Tools.SceneEditor
                 SetStatus(ToolUi.Tr("tools/common/readonly"), ToolStatusKind.Error);
                 return;
             }
-            SceneFileService.RefreshGame();
+            SceneManager.ReloadContent();
             RefreshAll();
             OpenScenarioEditor(key);
             SetStatus(string.Format(ToolUi.Tr("tools/scene_editor/scenario_created"), key), ToolStatusKind.Ok);
