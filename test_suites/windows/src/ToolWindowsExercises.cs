@@ -155,7 +155,7 @@ namespace Cthangover.Tools.Tests.Windows
             finally
             {
                 DeleteLeftovers(scenePath, scenarioPath);
-                SceneFileService.RefreshGame();
+                SceneManager.ReloadContent();
             }
         }
 
