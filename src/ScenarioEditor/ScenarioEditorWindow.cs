@@ -321,8 +321,8 @@ namespace Cthangover.Core.UI.Tool.ScenarioEditor
 
             Visible = false;
 
-            // The screen the editor was opened from (the novel_editor hub, a
-            // mod menu) is freed by the shell load below; remember its route so
+            // The screen the editor was opened from (a mod menu, a mod
+            // route) is freed by the shell load below; remember its route so
             // the play-test returns there instead of to the engine's main menu.
             var sceneService = GetNodeOrNull<GodotSceneService>("/root/GodotSceneService");
             var current = sceneService?.CurrentGodotSceneName;
