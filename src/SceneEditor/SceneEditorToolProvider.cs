@@ -4,7 +4,7 @@ using Godot;
 
 namespace Cthangover.Tools.SceneEditor
 {
-    /// <summary>Registers the scene editor as a tool window (hub, main menu tools, in-game toolbox).</summary>
+    /// <summary>Registers the scene editor as a tool window (main menu tools, in-game toolbox).</summary>
     public class SceneEditorToolProvider : IToolProvider
     {
         /// <summary>Unique tool identifier.</summary>

@@ -1,12 +1,9 @@
 using System.Collections.Generic;
 using System.IO;
 using Cthangover.Core.Bootstrap;
-using Cthangover.Core.Games;
 using Cthangover.Core.UI.Tool;
 using Cthangover.Core.Utils;
-using Cthangover.Mods.Interface.Menu;
 using Cthangover.Mods.Interface.Tool;
-using Cthangover.Tools.Hub;
 using Cthangover.Mods.Interface.View;
 using Godot;
 
@@ -20,13 +17,6 @@ namespace Cthangover.Tools.Tests.Windows
     /// closes it. A window that throws while constructing or laying out fails
     /// only its own check, the others still run. Ends with the runner contract
     /// <c>[TEST_RESULT] name=tools_windows passed=N failed=M</c> and the exit code.
-    /// <para/>
-    /// Launched as the <c>novel_editor</c> game (<c>--game=novel_editor --new</c>)
-    /// it first waits for the collection's entry scene, the
-    /// <see cref="NovelEditorHub"/>, and checks it lists a launcher button for
-    /// every registered tool before opening the windows; after the windows it
-    /// plays a scenario from the editor and checks that both the scenario's
-    /// end and Stop return to the hub (<see cref="ScenarioPlayReturnCheck"/>).
     /// </summary>
     public partial class ToolWindowsTestDriverNode : Node
     {
@@ -45,8 +35,6 @@ namespace Cthangover.Tools.Tests.Windows
         private double _elapsed;
         private bool _finished;
         private Window _window;
-        private bool _inHub;
-        private ScenarioPlayReturnCheck _playCheck;
         private readonly ToolWindowsErrorLogger _errors = new();
 
         /// <summary>Creates the driver; <paramref name="shotsDir"/> null or empty disables screenshots.</summary>
@@ -78,22 +66,9 @@ namespace Cthangover.Tools.Tests.Windows
                 if (!Boot.IsReady || tree?.CurrentScene == null)
                     return;
 
-                _inHub = ActiveGame.Id == NovelEditorHub.SceneName;
-                if (_inHub && tree.CurrentScene is not NovelEditorHub)
-                    return;
-
                 _tools.AddRange(ToolFactory.Instance.GetAll());
                 Check(_tools.Count > 0, $"tools registered ({_tools.Count})");
-                if (_inHub)
-                    CheckHub(tree.CurrentScene);
                 OpenNext();
-                return;
-            }
-
-            if (_playCheck != null)
-            {
-                if (_playCheck.Tick(GetTree()))
-                    Finish();
                 return;
             }
 
@@ -124,10 +99,7 @@ namespace Cthangover.Tools.Tests.Windows
             _toolIndex++;
             if (_toolIndex >= _tools.Count)
             {
-                if (_inHub)
-                    _playCheck = new ScenarioPlayReturnCheck(Check);
-                else
-                    Finish();
+                Finish();
                 return;
             }
 
@@ -144,24 +116,6 @@ namespace Cthangover.Tools.Tests.Windows
                 _window = null;
                 OpenNext();
             }
-        }
-
-        /// <summary>Every registered tool has its launcher button on the hub screen.</summary>
-        private void CheckHub(Node hub)
-        {
-            var keys = new HashSet<string>();
-            CollectButtonKeys(hub, keys);
-            foreach (var tool in _tools)
-                Check(keys.Contains(tool.LocaleKey), $"hub: launcher button for {tool.Id}");
-            SaveShot("novel_editor_hub");
-        }
-
-        private static void CollectButtonKeys(Node node, HashSet<string> keys)
-        {
-            if (node is Button button && button.HasMeta(MenuBuilder.LocaleMetaKey))
-                keys.Add(button.GetMeta(MenuBuilder.LocaleMetaKey).AsString());
-            foreach (var child in node.GetChildren())
-                CollectButtonKeys(child, keys);
         }
 
         private void InspectAndClose()
