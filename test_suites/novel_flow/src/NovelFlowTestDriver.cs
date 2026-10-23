@@ -10,6 +10,7 @@ using Cthangover.Mods.Dialog;
 using Cthangover.Tools.Common;
 using Cthangover.Tools.SceneEditor;
 using Cthangover.Tools.Services;
+using Cthangover.Mods.Interface.View;
 using Godot;
 
 namespace Cthangover.Tools.Tests.NovelFlow
@@ -341,7 +342,7 @@ namespace Cthangover.Tools.Tests.NovelFlow
             if (string.IsNullOrEmpty(shotsDir) || DisplayServer.GetName() == "headless")
                 return;
             DirAccess.MakeDirRecursiveAbsolute(shotsDir);
-            GetViewport().GetTexture().GetImage()?.SavePng(shotsDir.TrimEnd('/') + "/novel_flow_" + name + ".png");
+            ViewportCapture.SavePng(GetViewport(), shotsDir.TrimEnd('/') + "/novel_flow_" + name + ".png");
         }
 
         private void Finish()
