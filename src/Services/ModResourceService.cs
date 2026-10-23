@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Cthangover.Core.Factories.Impls;
 using Cthangover.Core.Mods;
 using Cthangover.Core.Mods.Resolvers;
+using Cthangover.Core.Utils;
 using Godot;
 
 namespace Cthangover.Tools.Services
@@ -119,6 +121,41 @@ namespace Cthangover.Tools.Services
                 result.Add(id);
             }
             return result;
+        }
+
+        /// <summary>
+        /// Pictures of a file group (<c>items</c>, <c>characters</c>, <c>charsets</c>…):
+        /// group-relative paths without extension, sorted — what an entity's picture
+        /// field holds (<c>food/ration</c>, <c>village/slime</c>).
+        /// </summary>
+        public static List<string> GetGroupImageIds(string group)
+        {
+            var ids = new List<string>();
+            var files = Files.Collect(group);
+            if (files == null)
+                return ids;
+            var exts = GetExt();
+            foreach (var key in files.Keys)
+            {
+                if (exts.Contains(Path.GetExtension(key).ToLower()))
+                    ids.Add(Path.ChangeExtension(key, null));
+            }
+            ids.Sort(StringComparer.OrdinalIgnoreCase);
+            return ids;
+        }
+
+        /// <summary>
+        /// A picture of a file group by the id <see cref="GetGroupImageIds"/> lists
+        /// (a <c>group/</c> prefix is allowed, as data files often write it); null
+        /// without an error log when the group has no such picture, so a form can
+        /// show a half-typed path.
+        /// </summary>
+        public static Texture2D LoadGroupImage(string group, string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                return null;
+            var path = id.StartsWith(group + "/", StringComparison.OrdinalIgnoreCase) ? id.Substring(group.Length + 1) : id;
+            return GetGroupImageIds(group).Contains(path, StringComparer.OrdinalIgnoreCase) ? TextureUtils.LoadFromModGroup(group, path) : null;
         }
 
         /// <summary>
