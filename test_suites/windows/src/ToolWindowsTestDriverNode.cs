@@ -7,6 +7,7 @@ using Cthangover.Core.Utils;
 using Cthangover.Mods.Interface.Menu;
 using Cthangover.Mods.Interface.Tool;
 using Cthangover.Tools.Hub;
+using Cthangover.Mods.Interface.View;
 using Godot;
 
 namespace Cthangover.Tools.Tests.Windows
@@ -190,9 +191,8 @@ namespace Cthangover.Tools.Tests.Windows
 
             var dir = ProjectSettings.GlobalizePath(_shotsDir);
             Directory.CreateDirectory(dir);
-            var image = GetViewport().GetTexture().GetImage();
             var path = Path.Combine(dir, id + ".png");
-            image.SavePng(path);
+            ViewportCapture.SavePng(GetViewport(), path);
             Log($"screenshot {path}");
         }
 
