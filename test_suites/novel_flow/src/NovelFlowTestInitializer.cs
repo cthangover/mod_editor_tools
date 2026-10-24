@@ -31,7 +31,7 @@ namespace Cthangover.Tools.Tests.NovelFlow
                 .Select(a => a.Substring("--shots=".Length))
                 .FirstOrDefault();
             GameLogger.Log("TEST", $"NovelFlowTestInitializer: activating novel_flow, shots={shots ?? "off"}");
-            (Godot.Engine.GetMainLoop() as SceneTree)?.Root?.CallDeferred("add_child", new NovelFlowTestDriver(shots));
+            ModRoot.AddDeferred(new NovelFlowTestDriver(shots));
         }
     }
 }

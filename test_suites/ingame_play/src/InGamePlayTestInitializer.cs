@@ -25,7 +25,7 @@ namespace Cthangover.Tools.Tests.InGamePlay
 
             driverQueued = true;
             GameLogger.Log("TEST", "InGamePlayTestInitializer: activating in-game play-test test");
-            (Godot.Engine.GetMainLoop() as SceneTree)?.Root?.CallDeferred("add_child", new InGamePlayTestDriverNode());
+            ModRoot.AddDeferred(new InGamePlayTestDriverNode());
         }
     }
 }

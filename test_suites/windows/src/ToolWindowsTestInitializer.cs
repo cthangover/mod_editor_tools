@@ -37,7 +37,7 @@ namespace Cthangover.Tools.Tests.Windows
 
             driverQueued = true;
             GameLogger.Log("TEST", $"ToolWindowsTestInitializer: activating tool windows test, shots='{shots ?? ""}'");
-            (Godot.Engine.GetMainLoop() as SceneTree)?.Root?.CallDeferred("add_child", new ToolWindowsTestDriverNode(shots));
+            ModRoot.AddDeferred(new ToolWindowsTestDriverNode(shots));
         }
     }
 }
