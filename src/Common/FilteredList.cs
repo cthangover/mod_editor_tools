@@ -15,12 +15,16 @@ namespace Cthangover.Tools.Common
     /// </summary>
     public partial class FilteredList : VBoxContainer
     {
+        // Scroll bar, item padding and a little text room on the right.
+        private const int IconBoxMargin = 40;
+
         private readonly LineEdit _search;
         private readonly ItemList _list;
         private readonly List<(string Id, string Text, Texture2D Icon)> _items = new();
         private readonly List<string> _visibleIds = new();
         private string _selectedId;
         private bool _silent;
+        private int _fitSide;
 
         /// <summary>Raised when the user selects a row (click or keyboard).</summary>
         public event Action<string> Chosen;
@@ -63,6 +67,19 @@ namespace Cthangover.Tools.Common
             _list.MaxColumns = 0;
             _list.SameColumnWidth = true;
             _list.FixedColumnWidth = iconSize + 24;
+        }
+
+        /// <summary>
+        /// Scales row icons to fit a box at most <paramref name="maxSide"/> px high and never wider than the
+        /// list (minus room for the scroll bar): pictures of any size — a 1024×1920 portrait as well as a
+        /// 32 px icon — keep their aspect and the row stays inside the panel. The box follows the list
+        /// width, so narrowing the panel shrinks the pictures further.
+        /// </summary>
+        public void FitIcons(int maxSide)
+        {
+            _fitSide = maxSide;
+            _list.Resized += UpdateIconBox;
+            UpdateIconBox();
         }
 
         /// <summary>Replaces all items; keeps the current selection when its id is still present.</summary>
@@ -129,6 +146,12 @@ namespace Cthangover.Tools.Common
 
             _selectedId = IdAt((int)index);
             Chosen?.Invoke(_selectedId);
+        }
+
+        private void UpdateIconBox()
+        {
+            var width = (int)_list.Size.X - IconBoxMargin;
+            _list.FixedIconSize = new Vector2I(Math.Clamp(width, 16, _fitSide), _fitSide);
         }
 
         private string IdAt(int index) => index >= 0 && index < _visibleIds.Count ? _visibleIds[index] : null;
