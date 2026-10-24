@@ -110,6 +110,7 @@ namespace Cthangover.Tools.EntityEditor
             listColumn.AddChild(ToolUi.Section("tools/entity_editor/section_list"));
             list = new FilteredList(320f, "tools/entity_editor/search");
             list.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+            list.FitIcons(64);
             list.Chosen += OnChosen;
             listColumn.AddChild(list);
             var listPanel = CreateSidebar(listColumn, 320);
