@@ -9,7 +9,9 @@ using Cthangover.Core.UI.Theming;
 using Cthangover.Core.Utils;
 using Cthangover.Mods.Interface.Theming;
 using Cthangover.Mods.Interface.Tool;
+using Cthangover.Mods.Schemas;
 using Cthangover.Tools.Common;
+using Cthangover.Tools.Schemas;
 using Cthangover.Tools.Services;
 using Godot;
 
@@ -30,6 +32,12 @@ namespace Cthangover.Tools.EntityEditor
     /// editable, and every property the form does not know is shown as JSON under
     /// "other fields", edited there and written back as it is.
     /// <para/>
+    /// Fields other mods describe for the kind in their schemas (<c>schemas/*.json</c>: the
+    /// equipment mod adds <c>Equip</c> and <c>Traits</c> to items, the stats add <c>Archetype</c>
+    /// and <c>Stats</c> to characters) get their own block, "fields of other mods", with the
+    /// schema editors, so a data editor grows with the mods loaded next to it without
+    /// knowing them.
+    /// <para/>
     /// Every change is undoable (Ctrl+Z / Ctrl+Y): one undo step per editing
     /// session of one entity, and one per add, duplicate or delete.
     /// </summary>
@@ -44,6 +52,7 @@ namespace Cthangover.Tools.EntityEditor
         private readonly Dictionary<EntityField, TextureRect> previews = new();
         private readonly Dictionary<string, Texture2D> icons = new();
         private readonly List<string> mods = new();
+        private readonly List<ISchemaFieldEditor> schemaEditors = new();
 
         private OptionButton modPicker;
         private FilteredList list;
@@ -144,6 +153,7 @@ namespace Cthangover.Tools.EntityEditor
             idEdit.AddThemeFontOverride("font", ToolUi.Mono());
             foreach (var field in fields)
                 BuildField(field);
+            BuildSchemaFields();
 
             form.AddChild(ToolUi.Section("tools/entity_editor/section_other"));
             form.AddChild(ToolUi.Hint(ToolUi.Tr("tools/entity_editor/other_hint")));
@@ -186,6 +196,20 @@ namespace Cthangover.Tools.EntityEditor
                     textEdits[field] = new Dictionary<string, LineEdit>();
                     break;
             }
+        }
+
+        private void BuildSchemaFields()
+        {
+            var described = SchemaCatalog.Current.FieldsOf(kind)
+                .Where(f => !string.Equals(f.Key, "Id", StringComparison.OrdinalIgnoreCase) && !fields.Any(e => string.Equals(e.Key, f.Key, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            if (described.Count == 0)
+                return;
+            form.AddChild(ToolUi.Section("tools/entity_editor/section_schema"));
+            var sources = string.Join(", ", described.Select(f => f.SourceMod).Where(m => m != null).Distinct());
+            form.AddChild(ToolUi.Hint(string.Format(ToolUi.Tr("tools/entity_editor/schema_hint"), sources)));
+            foreach (var field in described)
+                schemaEditors.Add(SchemaFieldEditors.Create(form, field, WriteForm));
         }
 
         private void BuildPicture(EntityField field)
@@ -257,6 +281,8 @@ namespace Cthangover.Tools.EntityEditor
             languages = LocaleFileService.Languages(mod);
             foreach (var field in fields.Where(f => f.Kind == EntityFieldKind.LocaleText))
                 BuildTextRows(field);
+            foreach (var locale in schemaEditors.OfType<LocaleFieldEditor>())
+                locale.Open(document, mod, languages);
             MarkClean();
             selected = null;
             RefreshList();
@@ -337,6 +363,8 @@ namespace Cthangover.Tools.EntityEditor
             idEdit.Text = record.Id;
             foreach (var field in fields)
                 ShowField(field, record.Data);
+            foreach (var editor in schemaEditors)
+                editor.Load(record.Data.FirstOrDefault(p => string.Equals(p.Key, editor.Field.Key, StringComparison.OrdinalIgnoreCase)).Value);
             otherEdit.Text = OtherJson(record.Data);
             suppress = false;
         }
@@ -451,6 +479,15 @@ namespace Cthangover.Tools.EntityEditor
             data["Id"] = idEdit.Text.Trim();
             foreach (var field in fields)
                 WriteField(field, data);
+            foreach (var editor in schemaEditors)
+            {
+                var key = data.FirstOrDefault(p => string.Equals(p.Key, editor.Field.Key, StringComparison.OrdinalIgnoreCase)).Key ?? editor.Field.Key;
+                var value = editor.Save();
+                if (value == null)
+                    data.Remove(key);
+                else
+                    data[key] = value;
+            }
             SetDirty();
             RefreshList();
         }
@@ -524,7 +561,8 @@ namespace Cthangover.Tools.EntityEditor
             return EntityDocument.Serialize(other).TrimEnd();
         }
 
-        private bool IsFormKey(string key) => key == "Id" || fields.Any(f => f.Key == key);
+        private bool IsFormKey(string key)
+            => key == "Id" || fields.Any(f => f.Key == key) || schemaEditors.Any(e => string.Equals(e.Field.Key, key, StringComparison.OrdinalIgnoreCase));
 
         private void OnOtherChanged()
         {

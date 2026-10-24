@@ -11,7 +11,7 @@
   "test_sources": [
     "tests/*.cs"
   ],
-  "depends": ["dialog_base>=1", "interactive_base>=1", "time_base>=1", "map_base>=1", "ui_base>=1"],
+  "depends": ["dialog_base>=1", "interactive_base>=1", "time_base>=1", "map_base>=1", "ui_base>=1", "schema_base>=1"],
   "test_suites": [
     {"id": "windows", "activate": ["--itest=tools_windows"]},
     {"id": "ingame_play", "activate": ["--itest=ingame_play"]},
