@@ -249,6 +249,7 @@ namespace Cthangover.Core.UI.Tool.SceneBuilder
             _sideTabs.SetTabTitle(1, ToolUi.Tr("tools/scene_builder/tab_tscn"));
 
             _tscnEditor = ToolUi.Code();
+            _tscnEditor.SyntaxHighlighter = SourceSyntax.CreateTscnHighlighter();
             _tscnEditor.TextChanged += OnTscnTextChanged;
             tscnTab.AddChild(_tscnEditor);
             tscnTab.AddChild(ToolUi.Hint(ToolUi.Tr("tools/scene_builder/tscn_hint")));

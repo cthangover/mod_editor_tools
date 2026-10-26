@@ -110,6 +110,7 @@ namespace Cthangover.Core.UI.Tool.LightEditor
             canvasPanel.AddChild(_canvas);
 
             _lineEdit = ToolUi.Code(editable: false);
+            _lineEdit.SyntaxHighlighter = ScenarioSyntaxService.CreateHighlighter();
             _lineEdit.CustomMinimumSize = new Vector2(0, 70);
             _lineEdit.WrapMode = TextEdit.LineWrappingMode.Boundary;
             _lineEdit.Visible = false;

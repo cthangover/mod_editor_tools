@@ -25,6 +25,8 @@ namespace Cthangover.Tools.Tests.Windows
         /// <summary>Runs the checks for <paramref name="toolId"/>; <paramref name="check"/> records each result.</summary>
         public static void Run(string toolId, Window window, Action<bool, string> check)
         {
+            foreach (var editor in window.FindChildren("*", "", true, false).OfType<CodeEdit>())
+                check(editor.SyntaxHighlighter != null, toolId + ": source field has syntax highlighting");
             switch (toolId)
             {
                 case "map_editor":
