@@ -119,12 +119,13 @@ namespace Cthangover.Tools.Common
         /// <summary>Monospace font for IDs, numbers and code (style guide <c>--ct-mono</c>).</summary>
         public static Font Mono() => ToolWindow.GetMonospaceFont();
 
-        /// <summary>Code editor preset: monospace, line numbers, current-line highlight, no wrap.</summary>
+        /// <summary>Code editor preset: monospace, line numbers, JSON highlighting and no wrap; scenario/scene callers select their syntax.</summary>
         public static CodeEdit Code(bool editable = true)
         {
             var edit = new CodeEdit
             {
                 Editable = editable,
+                SyntaxHighlighter = SourceSyntax.CreateJsonHighlighter(),
                 GuttersDrawLineNumbers = true,
                 HighlightCurrentLine = true,
                 WrapMode = TextEdit.LineWrappingMode.None,

@@ -3,6 +3,7 @@ using Cthangover.Mods.Dialog.Scenarios;
 using Cthangover.Core.Scenarios;
 using Cthangover.Core.Factories.Impls;
 using Cthangover.Core.UI.Theming;
+using Cthangover.Mods.Interface.Theming;
 using Godot;
 
 namespace Cthangover.Tools.Services
@@ -20,36 +21,12 @@ namespace Cthangover.Tools.Services
     {
         /// <summary>
         /// Builds a <see cref="CodeHighlighter"/> for scenario DSL syntax.
-        /// Comments (lines starting with <c>#</c>) are green, strings are bright
+        /// Comments (lines starting with <c>#</c>) are faint, strings are bright
         /// gold, command names are blue, and argument keywords (e.g. <c>key</c>,
         /// <c>wait</c>, <c>quest_id</c>) are amber — all from <see cref="UiTokens"/>.
         /// </summary>
         public static CodeHighlighter CreateHighlighter()
-        {
-            var hl = new CodeHighlighter();
-            hl.AddColorRegion("#", null, UiTokens.Success, true);
-            hl.AddColorRegion("\"", "\"", UiTokens.AccentBright, false);
-            hl.NumberColor = UiTokens.Info;
-            hl.SymbolColor = UiTokens.Muted;
-
-            var cmdColor = UiTokens.Info;
-            hl.KeywordColors = new Godot.Collections.Dictionary();
-
-            foreach (var cmd in ScenarioCommandStrategyFactory.GetAllCommandNames())
-                hl.KeywordColors[cmd] = cmdColor;
-            
-            foreach (var cmd in new[] {
-                "option", "select"
-            }) hl.KeywordColors[cmd] = cmdColor;
-            
-            var argColor = UiTokens.Accent;
-            foreach (var kw in new[] {
-                "key", "first", "second", "hide_color", "wait", "speed", "hidden",
-                "sprites", "loop", "target", "quest_id", "show", "hide", "duration"
-            }) hl.KeywordColors[kw] = argColor;
-
-            return hl;
-        }
+            => SourceSyntax.CreateScenarioHighlighter(ScenarioCommandStrategyFactory.GetAllCommandNames());
 
         /// <summary>
         /// Splits a line into tokens, handling quoted strings (with backslash

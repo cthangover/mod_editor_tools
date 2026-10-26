@@ -19,7 +19,8 @@ namespace Cthangover.Tools.Schemas
     ///   the kind (by name), of player/party/characters;</item>
     /// <item><c>ref_list</c> — a comma list with a drop-down that appends an entity;</item>
     /// <item><c>picture</c> — a path with the picture grid of the editors;</item>
-    /// <item>anything else — a text box (monospace for formulas, conditions and JSON).</item>
+    /// <item><c>json</c> — a multiline source editor with syntax highlighting;</item>
+    /// <item>anything else — a text box (monospace for formulas and conditions).</item>
     /// </list>
     /// A current value the options do not know is kept and shown first, so opening and
     /// saving never loses data the schema did not foresee.
@@ -28,6 +29,7 @@ namespace Cthangover.Tools.Schemas
     {
         private readonly Action changed;
         private readonly LineEdit text;
+        private readonly CodeEdit json;
         private readonly OptionButton picker;
         private readonly CheckBox check;
         private readonly List<string> pickerValues = new();
@@ -74,10 +76,19 @@ namespace Cthangover.Tools.Schemas
                     }
                     Editor = ToolUi.Field(parent, label, row, tip);
                     break;
+                case "json":
+                    json = ToolUi.Code();
+                    json.Name = "Text_" + field.Key;
+                    json.Text = field.Default ?? string.Empty;
+                    json.CustomMinimumSize = new Vector2(0, 90);
+                    json.SizeFlagsVertical = Control.SizeFlags.Fill;
+                    json.TextChanged += OnJsonChanged;
+                    Editor = ToolUi.Field(parent, label, json, tip);
+                    break;
                 default:
                     text = ToolUi.Text(field.Default ?? string.Empty, OnTyped);
                     text.Name = "Text_" + field.Key;
-                    if (Type is "formula" or "condition" or "json")
+                    if (Type is "formula" or "condition")
                         text.AddThemeFontOverride("font", ToolUi.Mono());
                     Editor = ToolUi.Field(parent, label, text, tip);
                     break;
@@ -103,6 +114,8 @@ namespace Cthangover.Tools.Schemas
                     return check.ButtonPressed ? "1" : string.Empty;
                 if (text != null)
                     return text.Text.Trim();
+                if (json != null)
+                    return json.Text.Trim();
                 return picker != null && picker.Selected >= 0 && picker.Selected < pickerValues.Count ? pickerValues[picker.Selected] : string.Empty;
             }
             set
@@ -112,6 +125,8 @@ namespace Cthangover.Tools.Schemas
                     check.ButtonPressed = value is "1" or "true" or "True" or "yes";
                 else if (text != null)
                     text.Text = value ?? string.Empty;
+                else if (json != null)
+                    json.Text = value ?? string.Empty;
                 else
                     FillPicker(value ?? string.Empty);
                 suppress = false;
@@ -154,6 +169,8 @@ namespace Cthangover.Tools.Schemas
                     return GameEntityIndex.Of(Field.Kind).Keys;
             }
         }
+
+        private void OnJsonChanged() => OnTyped(json.Text);
 
         private void OnTyped(string value)
         {
