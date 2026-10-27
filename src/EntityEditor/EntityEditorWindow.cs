@@ -201,7 +201,7 @@ namespace Cthangover.Tools.EntityEditor
 
         private void BuildSchemaFields()
         {
-            var described = SchemaCatalog.Current.FieldsOf(kind)
+            var described = Cthangover.Mods.Schemas.SchemaCatalog.Current.FieldsOf(kind)
                 .Where(f => !string.Equals(f.Key, "Id", StringComparison.OrdinalIgnoreCase) && !fields.Any(e => string.Equals(e.Key, f.Key, StringComparison.OrdinalIgnoreCase)))
                 .ToList();
             if (described.Count == 0)

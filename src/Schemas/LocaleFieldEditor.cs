@@ -1,6 +1,8 @@
 namespace Cthangover.Tools.Schemas
 {
     using Cthangover.Mods.Schemas;
+    using SchemaFieldDefinition = Cthangover.Mods.Schemas.FieldSchema;
+    using SchemaJsonValues = Cthangover.Mods.Schemas.SchemaJson;
     using System;
     using System.Collections.Generic;
     using System.Text.Json.Nodes;
@@ -18,7 +20,7 @@ namespace Cthangover.Tools.Schemas
     /// </summary>
     public class LocaleFieldEditor : ISchemaFieldEditor
     {
-        private readonly FieldSchema field;
+        private readonly SchemaFieldDefinition field;
         private readonly Action changed;
         private readonly LineEdit keyEdit;
         private readonly VBoxContainer texts;
@@ -28,10 +30,10 @@ namespace Cthangover.Tools.Schemas
         private bool suppress;
 
         /// <inheritdoc />
-        public FieldSchema Field => field;
+        public SchemaFieldDefinition Field => field;
 
         /// <summary>Adds the editor for <paramref name="field"/> to <paramref name="parent"/>.</summary>
-        public LocaleFieldEditor(Container parent, FieldSchema field, Action changed)
+        public LocaleFieldEditor(Container parent, SchemaFieldDefinition field, Action changed)
         {
             this.field = field;
             this.changed = changed;

@@ -1,6 +1,8 @@
 namespace Cthangover.Tools.Schemas
 {
     using Cthangover.Mods.Schemas;
+    using SchemaFieldDefinition = Cthangover.Mods.Schemas.FieldSchema;
+    using SchemaJsonValues = Cthangover.Mods.Schemas.SchemaJson;
     using System;
     using System.Text.Json.Nodes;
     using Godot;
@@ -11,18 +13,18 @@ namespace Cthangover.Tools.Schemas
         private readonly SchemaFieldControl control;
 
         /// <summary>Adds the row for <paramref name="field"/> to <paramref name="parent"/>.</summary>
-        public ScalarFieldEditor(Container parent, FieldSchema field, Action changed)
+        public ScalarFieldEditor(Container parent, SchemaFieldDefinition field, Action changed)
         {
             control = new SchemaFieldControl(parent, field, changed);
         }
 
         /// <inheritdoc />
-        public FieldSchema Field => control.Field;
+        public SchemaFieldDefinition Field => control.Field;
 
         /// <inheritdoc />
-        public void Load(JsonNode node) => control.Value = SchemaJson.ToText(node);
+        public void Load(JsonNode node) => control.Value = SchemaJsonValues.ToText(node);
 
         /// <inheritdoc />
-        public JsonNode Save() => SchemaJson.ToNode(control.Field, control.Value);
+        public JsonNode Save() => SchemaJsonValues.ToNode(control.Field, control.Value);
     }
 }

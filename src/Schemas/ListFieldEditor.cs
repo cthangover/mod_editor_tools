@@ -1,6 +1,8 @@
 namespace Cthangover.Tools.Schemas
 {
     using Cthangover.Mods.Schemas;
+    using SchemaFieldDefinition = Cthangover.Mods.Schemas.FieldSchema;
+    using SchemaJsonValues = Cthangover.Mods.Schemas.SchemaJson;
     using System;
     using System.Collections.Generic;
     using System.Globalization;
@@ -12,7 +14,7 @@ namespace Cthangover.Tools.Schemas
     using Godot;
 
     /// <summary>
-    /// Edits a <c>list</c> field — an array of objects described by <see cref="FieldSchema.Of"/>
+    /// Edits a <c>list</c> field — an array of objects described by <see cref="SchemaFieldDefinition.Of"/>
     /// (an item's traits, an archetype's learnings, a shop's goods) — as a stack of small
     /// cards with an add and a remove button, each card a form of the sub-fields.
     /// <para/>
@@ -22,7 +24,7 @@ namespace Cthangover.Tools.Schemas
     /// </summary>
     public class ListFieldEditor : ISchemaFieldEditor
     {
-        private readonly FieldSchema field;
+        private readonly SchemaFieldDefinition field;
         private readonly Action changed;
         private readonly VBoxContainer cards;
         private readonly List<List<SchemaFieldControl>> rows = new();
@@ -30,10 +32,10 @@ namespace Cthangover.Tools.Schemas
         private bool suppress;
 
         /// <inheritdoc />
-        public FieldSchema Field => field;
+        public SchemaFieldDefinition Field => field;
 
         /// <summary>Adds the editor for <paramref name="field"/> to <paramref name="parent"/>.</summary>
-        public ListFieldEditor(Container parent, FieldSchema field, Action changed)
+        public ListFieldEditor(Container parent, SchemaFieldDefinition field, Action changed)
         {
             this.field = field;
             this.changed = changed;
@@ -87,7 +89,7 @@ namespace Cthangover.Tools.Schemas
             {
                 var item = new JsonObject();
                 foreach (var control in card.Where(c => c.Value.Length > 0))
-                    item[control.Field.Key] = SchemaJson.ToNode(control.Field, control.Value);
+                    item[control.Field.Key] = SchemaJsonValues.ToNode(control.Field, control.Value);
                 if (item.Count > 0)
                     array.Add(item);
             }
@@ -126,10 +128,10 @@ namespace Cthangover.Tools.Schemas
             var column = new VBoxContainer();
             card.AddChild(column);
             var controls = new List<SchemaFieldControl>();
-            foreach (var sub in field.Of ?? new List<FieldSchema>())
+            foreach (var sub in field.Of ?? new List<SchemaFieldDefinition>())
             {
                 var control = new SchemaFieldControl(column, sub, OnChanged);
-                control.Value = SchemaJson.ToText(Find(item, sub.Key));
+                control.Value = SchemaJsonValues.ToText(Find(item, sub.Key));
                 controls.Add(control);
             }
             if (!IsValues)
