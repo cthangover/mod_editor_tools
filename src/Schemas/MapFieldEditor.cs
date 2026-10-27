@@ -1,6 +1,8 @@
 namespace Cthangover.Tools.Schemas
 {
     using Cthangover.Mods.Schemas;
+    using SchemaFieldDefinition = Cthangover.Mods.Schemas.FieldSchema;
+    using SchemaJsonValues = Cthangover.Mods.Schemas.SchemaJson;
     using System;
     using System.Collections.Generic;
     using System.Linq;
@@ -11,24 +13,24 @@ namespace Cthangover.Tools.Schemas
     using Godot;
 
     /// <summary>
-    /// Edits a <c>map</c> field — an object whose keys are ids of <see cref="FieldSchema.Kind"/>
+    /// Edits a <c>map</c> field — an object whose keys are ids of <see cref="SchemaFieldDefinition.Kind"/>
     /// and whose values are numbers or formulas (a character's own <c>Stats</c>, an archetype's
     /// growth): one row per key with a key picker, a value box and a remove button. A number
     /// is written as a number, anything else as a formula text.
     /// </summary>
     public class MapFieldEditor : ISchemaFieldEditor
     {
-        private readonly FieldSchema field;
+        private readonly SchemaFieldDefinition field;
         private readonly Action changed;
         private readonly VBoxContainer lines;
         private readonly List<(OptionButton Key, List<string> Keys, LineEdit Value, Control Row)> rows = new();
         private bool suppress;
 
         /// <inheritdoc />
-        public FieldSchema Field => field;
+        public SchemaFieldDefinition Field => field;
 
         /// <summary>Adds the editor for <paramref name="field"/> to <paramref name="parent"/>.</summary>
-        public MapFieldEditor(Container parent, FieldSchema field, Action changed)
+        public MapFieldEditor(Container parent, SchemaFieldDefinition field, Action changed)
         {
             this.field = field;
             this.changed = changed;
@@ -56,7 +58,7 @@ namespace Cthangover.Tools.Schemas
             if (node is JsonObject obj)
             {
                 foreach (var pair in obj)
-                    AddRow(pair.Key, SchemaJson.ToText(pair.Value));
+                    AddRow(pair.Key, SchemaJsonValues.ToText(pair.Value));
             }
             suppress = false;
         }
@@ -69,7 +71,7 @@ namespace Cthangover.Tools.Schemas
             {
                 var key = row.Key.Selected >= 0 && row.Key.Selected < row.Keys.Count ? row.Keys[row.Key.Selected] : null;
                 if (!string.IsNullOrEmpty(key) && row.Value.Text.Trim().Length > 0)
-                    obj[key] = SchemaJson.NumberOrText(row.Value.Text.Trim());
+                    obj[key] = SchemaJsonValues.NumberOrText(row.Value.Text.Trim());
             }
             return obj.Count == 0 ? null : obj;
         }

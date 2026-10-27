@@ -1,6 +1,8 @@
 namespace Cthangover.Tools.Schemas
 {
     using Cthangover.Mods.Schemas;
+    using SchemaFieldDefinition = Cthangover.Mods.Schemas.FieldSchema;
+    using SchemaJsonValues = Cthangover.Mods.Schemas.SchemaJson;
     using System;
     using System.Collections.Generic;
     using System.Linq;
@@ -10,7 +12,7 @@ namespace Cthangover.Tools.Schemas
     using Godot;
 
     /// <summary>
-    /// The form control of one scalar <see cref="FieldSchema"/>, chosen by its type, as a
+    /// The form control of one scalar <see cref="SchemaFieldDefinition"/>, chosen by its type, as a
     /// "label | editor" row. Everything reads and writes a text value, the way the DSL and
     /// most JSON fields hold it, so the palette and the data editor window share these rows:
     /// <list type="bullet">
@@ -36,7 +38,7 @@ namespace Cthangover.Tools.Schemas
         private bool suppress;
 
         /// <summary>Adds the row for <paramref name="field"/> to <paramref name="parent"/>; <paramref name="changed"/> runs on every edit.</summary>
-        public SchemaFieldControl(Container parent, FieldSchema field, Action changed)
+        public SchemaFieldControl(Container parent, SchemaFieldDefinition field, Action changed)
         {
             Field = field;
             this.changed = changed;
@@ -97,7 +99,7 @@ namespace Cthangover.Tools.Schemas
         }
 
         /// <summary>The described field.</summary>
-        public FieldSchema Field { get; }
+        public SchemaFieldDefinition Field { get; }
 
         /// <summary>The editor control (the row's right part).</summary>
         public Control Editor { get; }

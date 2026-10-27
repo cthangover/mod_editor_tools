@@ -2,6 +2,8 @@ namespace Cthangover.Tools.Schemas
 {
     using System;
     using Cthangover.Mods.Schemas;
+    using SchemaFieldDefinition = Cthangover.Mods.Schemas.FieldSchema;
+    using SchemaJsonValues = Cthangover.Mods.Schemas.SchemaJson;
     using Godot;
 
     /// <summary>
@@ -13,7 +15,7 @@ namespace Cthangover.Tools.Schemas
     public static class SchemaFieldEditors
     {
         /// <summary>Adds the editor of <paramref name="field"/> to <paramref name="parent"/>; <paramref name="changed"/> runs on every edit.</summary>
-        public static ISchemaFieldEditor Create(Container parent, FieldSchema field, Action changed)
+        public static ISchemaFieldEditor Create(Container parent, SchemaFieldDefinition field, Action changed)
         {
             switch (field.Type?.ToLowerInvariant())
             {
