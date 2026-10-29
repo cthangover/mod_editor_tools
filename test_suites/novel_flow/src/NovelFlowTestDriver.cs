@@ -354,7 +354,7 @@ namespace Cthangover.Tools.Tests.NovelFlow
             DeleteParkFiles();
             SceneManager.ReloadContent();
             GameLogger.Log("TEST", $"[TEST_RESULT] name=novel_flow passed={passed} failed={failures.Count}");
-            GetTree().Quit(failures.Count == 0 ? 0 : 1);
+            Cthangover.Core.Bootstrap.ApplicationExit.Quit(GetTree(), failures.Count == 0 ? 0 : 1);
         }
     }
 }

@@ -32,6 +32,9 @@ namespace Cthangover.Tools.Tests.Windows
                 case "map_editor":
                     MapDrawing(window, check);
                     break;
+                case "rpg_tileset_editor":
+                    ToolWindowsAtlasExercise.Run(window, check);
+                    break;
                 case "interactive_editor":
                     InteractivePolygon(window, check);
                     break;

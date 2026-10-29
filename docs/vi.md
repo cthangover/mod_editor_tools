@@ -2,17 +2,16 @@
 
 Editor Tools là những cửa sổ dành cho tác giả mở trên trò chơi đang chạy: trình sửa cảnh, trình sửa kịch bản, trình sửa bản đồ thế giới, trình sửa vật tương tác và ánh sáng, trình dựng cảnh Godot và phần xuất danh mục của mod. Mọi thứ chúng lưu đều là tệp mod bình thường, và trò chơi nhận thay đổi ngay lập tức, nên bạn viết ra một địa điểm, bước vào đó và chơi luôn mà không phải khởi động lại.
 
-Mod này cũng chứa phần nền của trình sửa vật phẩm và nhân vật (bản thân chúng là mod riêng: Items Editor và Characters Editor). Một trò chơi nhận các công cụ này qua bộ Developer Tools hoặc qua bộ sưu tập riêng của nó.
+Gói tương thích: bảy cửa sổ đã tách thành các mod riêng. `tools_base` chứa thành phần chung và `scenario_tools_base` chứa dịch vụ kịch bản. Mọi cửa sổ mở từ thanh công cụ trong trò chơi, không thêm nút ở menu chính.
 
 ## Mở các công cụ
 
 Trong game, nút chiếc búa trên thanh công cụ mở hộp công cụ:
 
-![Thanh công cụ của mẫu tiểu thuyết với chiếc búa đang được nhấn và hộp công cụ mở ra: Interactive Editor, Light Editor, Map Editor, Scene editor.](assets/toolbox.jpg)
+![Thanh công cụ của mẫu tiểu thuyết với chiếc búa đang được nhấn và hộp công cụ mở ra: Export Catalog Entry, Interactive Editor, Light Editor, Map Editor, Scenario Editor, Scene Builder, Scene editor.](assets/toolbox.jpg)
 
-- **Trình sửa cảnh**, **trình sửa bản đồ**, **trình sửa tương tác** và **trình sửa ánh sáng** nằm trong hộp công cụ. Các mod công cụ khác thêm mục của riêng chúng vào đó (trình sửa vật phẩm, nhân vật và bản đồ RPG, trình sửa dữ liệu).
-- **Trình sửa kịch bản** mở từ trình sửa cảnh: chọn một cảnh, chọn một kịch bản của cảnh rồi nhấn **Mở**, hoặc **+ Kịch bản mới**.
-- Nếu các công cụ được tải ở menu chính (ví dụ với `--all-mods`), mỗi công cụ cũng có nút trong khối công cụ của menu, kể cả trình dựng cảnh và phần xuất danh mục.
+- Cả bảy cửa sổ đều có trong hộp công cụ: **Trình sửa cảnh**, **Trình sửa kịch bản**, **Trình sửa bản đồ**, **Trình sửa tương tác**, **Trình sửa ánh sáng**, **Trình dựng cảnh** và **Xuất mục danh mục**. Các mod công cụ khác thêm mục của riêng chúng vào đó (trình sửa vật phẩm, nhân vật, bản đồ RPG và tileset, trình sửa dữ liệu).
+- **Trình sửa kịch bản** cũng mở được từ trình sửa cảnh: chọn một cảnh, chọn một kịch bản của cảnh rồi nhấn **Mở**, hoặc **+ Kịch bản mới**.
 
 Các cửa sổ vẫn mở khi chuyển cảnh, có thể di chuyển và đổi kích thước, và đóng bằng dấu ×.
 

@@ -5,6 +5,9 @@
     "src/*.cs"
   ],
   "depends": [
-    "cthangover_game>=1"
+    "cthangover_game>=1",
+    "rpg_tileset_editor>=1",
+    "village_pack>=1",
+    "test_defaults_and_patches>=1"
   ]
 }
