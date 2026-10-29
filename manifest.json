@@ -3,7 +3,7 @@
   "name": "Editor Tools",
   "version": "1.0.0",
   "author": "ct",
-  "description": "Developer toolbox of ToolBox windows: scenario graph editor, scene editor (create and change the places of a novel: backgrounds, ambient sound, default scenario, the scene's scenarios), map editor with zones, scene builder with inspector, interactive and light editors, the base of the data editors (items, characters: a searchable list and a form over JSON entities with texts in every language of the mod) and the mod catalog export window.",
+  "description": "The author's windows over a running game: scene, scenario, map, interactive and light editors and a Godot scene builder. What they save are ordinary mod files the game applies at once.",
   "category": "tools, editor",
   "sources": [
     "src/**/*.cs"
