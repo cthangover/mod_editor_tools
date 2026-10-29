@@ -2,17 +2,16 @@
 
 Editor Tools are the author's windows that open over the running game: the scene editor, the scenario editor, editors for the world map, interactive objects and lights, a builder of Godot scenes and the catalog export of a mod. Everything they save is ordinary mod files, and the game picks the change up at once, so an author writes a place, walks into it and plays it without restarting.
 
-The mod also holds the base of the item and character editors (they are separate mods: Items Editor, Characters Editor). A game gets these tools through the Developer Tools toolset or its own collection.
+Compatibility package: the seven windows now live in their own mods (`scenario_editor`, `scene_editor`, `scene_builder`, `map_editor`, `interactive_editor`, `light_editor`, `catalog_export`). Shared forms and files are in `tools_base`, scenario services in `scenario_tools_base`. All windows open from the in-game toolbar; no title-screen buttons are added.
 
 ## Opening the tools
 
 In a game, the hammer button on the toolbar opens the tool box:
 
-![The toolbar of the novel template with the hammer pressed and the tool box open: Interactive Editor, Light Editor, Map Editor, Scene editor.](assets/toolbox.jpg)
+![The toolbar of the novel template with the hammer pressed and the tool box open: Export Catalog Entry, Interactive Editor, Light Editor, Map Editor, Scenario Editor, Scene Builder, Scene editor.](assets/toolbox.jpg)
 
-- **Scene editor**, **Map Editor**, **Interactive Editor** and **Light Editor** are in the tool box. Other tool mods add their own entries there (the item, character and RPG map editors, the Data Editor).
-- The **scenario editor** opens from the scene editor: select a scene, pick one of its scenarios and press **Open**, or **+ New scenario**.
-- When the tools are loaded at the main menu (for example with `--all-mods`), every tool also has a button in the menu's tool block, including the scene builder and the catalog export.
+- All seven windows are in the tool box: **Scene editor**, **Scenario Editor**, **Map Editor**, **Interactive Editor**, **Light Editor**, **Scene Builder** and **Export Catalog Entry**. Other tool mods add their own entries there (the item, character, RPG map and tileset editors, the Data Editor).
+- The **scenario editor** also opens from the scene editor: select a scene, pick one of its scenarios and press **Open**, or **+ New scenario**.
 
 The windows stay open across scene changes, can be moved and resized, and close with the cross.
 

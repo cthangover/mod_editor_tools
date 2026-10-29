@@ -2,17 +2,16 @@
 
 Editor Tools son las ventanas de autor que se abren sobre el juego en marcha: el editor de escenas, el de escenarios, los editores del mapa del mundo, de objetos interactivos y de luces, un constructor de escenas de Godot y la exportación al catálogo de un mod. Todo lo que guardan son archivos de mod normales, y el juego toma el cambio al instante, así que puedes escribir un lugar, entrar en él y jugarlo sin reiniciar.
 
-El mod también contiene la base de los editores de objetos y de personajes (que son mods aparte: Items Editor y Characters Editor). Un juego obtiene estas herramientas mediante el conjunto Developer Tools o con su propia colección.
+Paquete de compatibilidad: las siete ventanas viven en mods independientes. `tools_base` contiene los componentes comunes y `scenario_tools_base` los servicios de escenarios. Todas se abren desde la barra del juego, sin botones en el menú principal.
 
 ## Cómo abrir las herramientas
 
 Dentro de un juego, el botón del martillo de la barra de herramientas abre la caja de herramientas:
 
-![La barra de herramientas de la plantilla de novela con el martillo pulsado y la caja de herramientas abierta: Interactive Editor, Light Editor, Map Editor, Scene editor.](assets/toolbox.jpg)
+![La barra de herramientas de la plantilla de novela con el martillo pulsado y la caja de herramientas abierta: Export Catalog Entry, Interactive Editor, Light Editor, Map Editor, Scenario Editor, Scene Builder, Scene editor.](assets/toolbox.jpg)
 
-- **Editor de escenas**, **Editor de mapas**, **Editor de interactivos** y **Editor de luces** están en la caja. Otros mods de herramientas añaden ahí sus propias entradas (los editores de objetos, de personajes y de mapas RPG, el editor de datos).
-- El **editor de escenarios** se abre desde el editor de escenas: elige una escena, selecciona uno de sus escenarios y pulsa **Abrir**, o **+ Nuevo escenario**.
-- Si las herramientas se cargan en el menú principal (por ejemplo con `--all-mods`), cada una tiene también un botón en el bloque de herramientas del menú, incluidos el constructor de escenas y la exportación al catálogo.
+- Las siete ventanas están en la caja: **Editor de escenas**, **Editor de escenarios**, **Editor de mapas**, **Editor de interactivos**, **Editor de luces**, **Constructor de escenas** y **Exportar entrada del catálogo**. Otros mods de herramientas añaden ahí sus propias entradas (los editores de objetos, de personajes, de mapas RPG y de tilesets, el editor de datos).
+- El **editor de escenarios** también se abre desde el editor de escenas: selecciona una escena, elige uno de sus escenarios y pulsa **Abrir**, o **+ Nuevo escenario**.
 
 Las ventanas siguen abiertas al cambiar de escena, se pueden mover y redimensionar, y se cierran con la cruz.
 

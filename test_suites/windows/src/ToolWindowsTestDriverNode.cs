@@ -68,6 +68,11 @@ namespace Cthangover.Tools.Tests.Windows
 
                 _tools.AddRange(ToolFactory.Instance.GetAll());
                 Check(_tools.Count > 0, $"tools registered ({_tools.Count})");
+                var toolbarTools = new HashSet<string>();
+                foreach (var button in ToolBoxButtonFactory.Instance.GetVisible())
+                    toolbarTools.Add(button.ToolId);
+                foreach (var tool in _tools)
+                    Check(toolbarTools.Contains(tool.Id), $"{tool.Id}: reachable from the in-game toolbar");
                 OpenNext();
                 return;
             }
@@ -176,7 +181,7 @@ namespace Cthangover.Tools.Tests.Windows
             _finished = true;
             OS.RemoveLogger(_errors);
             GameLogger.Log("TEST", $"[TEST_RESULT] name={ResultName} passed={_passed} failed={_failed}");
-            GetTree().Quit(_failed == 0 ? 0 : 1);
+            Cthangover.Core.Bootstrap.ApplicationExit.Quit(GetTree(), _failed == 0 ? 0 : 1);
         }
 
         private static void Log(string message) => GameLogger.Log("TEST", message);
