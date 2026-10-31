@@ -1,18 +1,20 @@
-using System;
-using System.IO;
-using System.Linq;
-using Cthangover.Core.Scenes;
-using Cthangover.Core.UI.Tool.LightEditor;
-using Cthangover.Core.UI.Tool.ScenarioEditor;
-using Cthangover.Tools.InteractiveEditor;
-using Cthangover.Tools.Common;
-using Cthangover.Tools.MapEditor;
-using Cthangover.Tools.SceneEditor;
-using Cthangover.Tools.Services;
-using Godot;
-
 namespace Cthangover.Tools.Tests.Windows
 {
+    using System;
+    using System.IO;
+    using System.Linq;
+    using Cthangover.Core.Scenes;
+    using Cthangover.Core.UI.Tool.LightEditor;
+    using Cthangover.Core.UI.Tool.ScenarioEditor;
+    using Cthangover.Tools.InteractiveEditor;
+    using Cthangover.Tools.Common;
+    using Cthangover.Mods.Rpg.Model;
+    using Cthangover.Tools.MapEditor;
+    using Cthangover.Tools.RpgEditor;
+    using Cthangover.Tools.SceneEditor;
+    using Cthangover.Tools.Services;
+    using Godot;
+
     /// <summary>
     /// Per-tool interaction checks run on an open window, through the same
     /// public surface the UI uses: canvas input is delivered by emitting the
@@ -32,8 +34,8 @@ namespace Cthangover.Tools.Tests.Windows
                 case "map_editor":
                     MapDrawing(window, check);
                     break;
-                case "rpg_tileset_editor":
-                    ToolWindowsAtlasExercise.Run(window, check);
+                case "rpg_map_editor":
+                    RpgMapCanvas(window, check);
                     break;
                 case "interactive_editor":
                     InteractivePolygon(window, check);
@@ -49,6 +51,29 @@ namespace Cthangover.Tools.Tests.Windows
                     check(tree?.GetRoot()?.GetChildCount() > 0, "scenario_editor: file tree lists mods with scenarios");
                     break;
             }
+        }
+
+        /// <summary>
+        /// The RPG map editor (plan 12.4): its canvas draws the map in both projections, the palette lists the four shapes,
+        /// and switching the projection keeps the map. Nothing is saved.
+        /// </summary>
+        private static void RpgMapCanvas(Window window, Action<bool, string> check)
+        {
+            var editor = window as RpgEditorWindow;
+            check(editor?.Canvas != null, "rpg_map_editor: the map canvas is there");
+            // A game without RPG maps (cthangover) opens the window on its map selector: no document, nothing to draw.
+            // The map checks run only when a map is open (plan E0: editor_tools windows do not need an RPG map).
+            var hasMap = editor?.Document != null && editor.Canvas != null;
+            if (hasMap)
+                check(editor.Canvas.Scene != null, "rpg_map_editor: a map is open and drawn");
+            check(editor != null && editor.Palette.Count(RpgObjectForm.Surface) > 0 && editor.Palette.Count(RpgObjectForm.Sprite) > 0,
+                "rpg_map_editor: the palette lists surfaces and sprites");
+            if (!hasMap)
+                return;
+            editor.SetProjection(RpgEditorCanvas.Isometric);
+            check(editor.Canvas.Projection == RpgEditorCanvas.Isometric && editor.Canvas.Scene != null, "rpg_map_editor: the isometric projection draws the map");
+            editor.SetProjection(RpgEditorCanvas.TopDown);
+            check(editor.Canvas.Projection == RpgEditorCanvas.TopDown && editor.Canvas.Scene != null, "rpg_map_editor: the top-down projection draws the map again");
         }
 
         /// <summary>Draws a triangle; the finishing double-click must not add a fourth vertex.</summary>
