@@ -129,6 +129,7 @@ namespace Cthangover.Tools.Tests.Windows
             var window = _window;
             _window = null;
 
+            ToolWindowsExercises.Verify(id, window, Check);
             var errors = _errors.Drain();
             Check(errors.Count == 0, $"{id}: no engine errors while opening" + (errors.Count > 0 ? ": " + string.Join(" | ", errors) : ""));
             Check(GodotObject.IsInstanceValid(window) && window.IsInsideTree() && window.Visible, $"{id}: window visible in tree");
