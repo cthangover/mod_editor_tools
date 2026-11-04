@@ -1,5 +1,7 @@
 # Editor Tools — crear escenas y escenarios dentro del juego en marcha
 
+`editor_tools` es un paquete de compatibilidad sin código: instala `scenario_editor`, `scene_editor`, `scene_builder`, `map_editor`, `interactive_editor`, `light_editor` y `catalog_export`. Las bibliotecas compartidas son `tools_base` y `scenario_tools_base`.
+
 Editor Tools son las ventanas de autor que se abren sobre el juego en marcha: el editor de escenas, el de escenarios, los editores del mapa del mundo, de objetos interactivos y de luces, un constructor de escenas de Godot y la exportación al catálogo de un mod. Todo lo que guardan son archivos de mod normales, y el juego toma el cambio al instante, así que puedes escribir un lugar, entrar en él y jugarlo sin reiniciar.
 
 Paquete de compatibilidad: las siete ventanas viven en mods independientes. `tools_base` contiene los componentes comunes y `scenario_tools_base` los servicios de escenarios. Todas se abren desde la barra del juego, sin botones en el menú principal.
@@ -10,7 +12,7 @@ Dentro de un juego, el botón del martillo de la barra de herramientas abre la c
 
 ![La barra de herramientas de la plantilla de novela con el martillo pulsado y la caja de herramientas abierta: Export Catalog Entry, Interactive Editor, Light Editor, Map Editor, Scenario Editor, Scene Builder, Scene editor.](assets/toolbox.jpg)
 
-- Las siete ventanas están en la caja: **Editor de escenas**, **Editor de escenarios**, **Editor de mapas**, **Editor de interactivos**, **Editor de luces**, **Constructor de escenas** y **Exportar entrada del catálogo**. Otros mods de herramientas añaden ahí sus propias entradas (los editores de objetos, de personajes, de mapas RPG y de tilesets, el editor de datos).
+- Las siete ventanas están en la caja: **Editor de escenas**, **Editor de escenarios**, **Editor de mapas**, **Editor de interactivos**, **Editor de luces**, **Constructor de escenas** y **Exportar entrada del catálogo**. Otros mods de herramientas añaden ahí sus propias entradas (los editores de objetos, de personajes, de mapas RPG y de objetos RPG, el editor de datos).
 - El **editor de escenarios** también se abre desde el editor de escenas: selecciona una escena, elige uno de sus escenarios y pulsa **Abrir**, o **+ Nuevo escenario**.
 
 Las ventanas siguen abiertas al cambiar de escena, se pueden mover y redimensionar, y se cierran con la cruz.
@@ -59,7 +61,7 @@ Guardar un escenario descarta las cachés de escenarios del juego, así que la p
 - **Constructor de escenas**: escenas `.tscn` de Godot para los mods.
 - **Exportación al catálogo**: empaqueta un mod en un zip y escribe su entrada para un catálogo de mods con sumas de comprobación.
 
-Deshacer funciona mientras editas (Ctrl+Z en el texto y en los formularios de los editores de objetos y personajes). Comprobar un mod en busca de referencias rotas es tarea de Validator; los editores no te impiden guardar un escenario con un error.
+Validator comprueba referencias entre mods; guardar un escenario modal no ejecuta su revisión completa. Con `npc_barks_base`, los programas de ambiente y sus parches inválidos se rechazan antes de guardar; el estado muestra el error de compilación.
 
 ## De quién son los archivos que se escriben
 

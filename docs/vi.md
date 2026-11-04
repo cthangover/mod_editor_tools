@@ -1,5 +1,7 @@
 # Editor Tools — dựng cảnh và kịch bản ngay trong trò chơi đang chạy
 
+`editor_tools` là gói tương thích không có mã: cài `scenario_editor`, `scene_editor`, `scene_builder`, `map_editor`, `interactive_editor`, `light_editor`, `catalog_export`. Thư viện chung là `tools_base`, `scenario_tools_base`.
+
 Editor Tools là những cửa sổ dành cho tác giả mở trên trò chơi đang chạy: trình sửa cảnh, trình sửa kịch bản, trình sửa bản đồ thế giới, trình sửa vật tương tác và ánh sáng, trình dựng cảnh Godot và phần xuất danh mục của mod. Mọi thứ chúng lưu đều là tệp mod bình thường, và trò chơi nhận thay đổi ngay lập tức, nên bạn viết ra một địa điểm, bước vào đó và chơi luôn mà không phải khởi động lại.
 
 Gói tương thích: bảy cửa sổ đã tách thành các mod riêng. `tools_base` chứa thành phần chung và `scenario_tools_base` chứa dịch vụ kịch bản. Mọi cửa sổ mở từ thanh công cụ trong trò chơi, không thêm nút ở menu chính.
@@ -10,7 +12,7 @@ Trong game, nút chiếc búa trên thanh công cụ mở hộp công cụ:
 
 ![Thanh công cụ của mẫu tiểu thuyết với chiếc búa đang được nhấn và hộp công cụ mở ra: Export Catalog Entry, Interactive Editor, Light Editor, Map Editor, Scenario Editor, Scene Builder, Scene editor.](assets/toolbox.jpg)
 
-- Cả bảy cửa sổ đều có trong hộp công cụ: **Trình sửa cảnh**, **Trình sửa kịch bản**, **Trình sửa bản đồ**, **Trình sửa tương tác**, **Trình sửa ánh sáng**, **Trình dựng cảnh** và **Xuất mục danh mục**. Các mod công cụ khác thêm mục của riêng chúng vào đó (trình sửa vật phẩm, nhân vật, bản đồ RPG và tileset, trình sửa dữ liệu).
+- Cả bảy cửa sổ đều có trong hộp công cụ: **Trình sửa cảnh**, **Trình sửa kịch bản**, **Trình sửa bản đồ**, **Trình sửa tương tác**, **Trình sửa ánh sáng**, **Trình dựng cảnh** và **Xuất mục danh mục**. Các mod công cụ khác thêm mục của riêng chúng vào đó (trình sửa vật phẩm, nhân vật, bản đồ RPG và vật thể RPG, trình sửa dữ liệu).
 - **Trình sửa kịch bản** cũng mở được từ trình sửa cảnh: chọn một cảnh, chọn một kịch bản của cảnh rồi nhấn **Mở**, hoặc **+ Kịch bản mới**.
 
 Các cửa sổ vẫn mở khi chuyển cảnh, có thể di chuyển và đổi kích thước, và đóng bằng dấu ×.
@@ -59,7 +61,7 @@ Lưu kịch bản sẽ xóa bộ nhớ đệm kịch bản của game, nên lầ
 - **Trình dựng cảnh** — cảnh `.tscn` của Godot cho các mod.
 - **Xuất danh mục** — đóng gói mod thành zip và ghi mục danh mục kèm tổng kiểm tra.
 
-Hoàn tác hoạt động trong khi sửa (Ctrl+Z trong phần văn bản và trong biểu mẫu của trình sửa vật phẩm, nhân vật). Kiểm tra mod có tham chiếu hỏng là việc của Validator; các trình sửa không cản bạn lưu một kịch bản còn lỗi.
+Validator kiểm tra tham chiếu giữa mod; lưu kịch bản thường không chạy toàn bộ kiểm tra. Khi có `npc_barks_base`, chương trình nền và bản vá không hợp lệ bị từ chối trước khi lưu; dòng trạng thái báo lỗi biên dịch.
 
 ## Tệp của ai được ghi
 
