@@ -10,7 +10,7 @@ In a game, the hammer button on the toolbar opens the tool box:
 
 ![The toolbar of the novel template with the hammer pressed and the tool box open: Export Catalog Entry, Interactive Editor, Light Editor, Map Editor, Scenario Editor, Scene Builder, Scene editor.](assets/toolbox.jpg)
 
-- All seven windows are in the tool box: **Scene editor**, **Scenario Editor**, **Map Editor**, **Interactive Editor**, **Light Editor**, **Scene Builder** and **Export Catalog Entry**. Other tool mods add their own entries there (the item, character, RPG map and tileset editors, the Data Editor).
+- All seven windows are in the tool box: **Scene editor**, **Scenario Editor**, **Map Editor**, **Interactive Editor**, **Light Editor**, **Scene Builder** and **Export Catalog Entry**. Other tool mods add their own entries there (the item, character, RPG map and object editors, the Data Editor).
 - The **scenario editor** also opens from the scene editor: select a scene, pick one of its scenarios and press **Open**, or **+ New scenario**.
 
 The windows stay open across scene changes, can be moved and resized, and close with the cross.
@@ -59,7 +59,7 @@ Saving a scenario drops the game's scenario caches, so the next entry into the t
 - **Scene builder** — Godot `.tscn` scenes for mods.
 - **Catalog export** — packs a mod into a zip and writes its entry for a mod catalog with checksums.
 
-Undo works while editing (Ctrl+Z in the text and in the forms of the entity editors). Checking a mod for broken references is the Validator's job; the editors do not stop you from saving a scenario with a mistake.
+The Validator checks cross-mod references. Modal scenario saving does not perform a full Validator pass. With `npc_barks_base` loaded, invalid ambient programs and ambient patches are refused before saving; the status line reports the compilation error.
 
 ## Whose files are written
 
