@@ -49,7 +49,39 @@ namespace Cthangover.Tools.Tests.Windows
                 case "scenario_editor":
                     var tree = Find<ScenarioFileTreePanel>(window)?.FindChildren("*", nameof(Tree), true, false).OfType<Tree>().FirstOrDefault();
                     check(tree?.GetRoot()?.GetChildCount() > 0, "scenario_editor: file tree lists mods with scenarios");
+                    ScenarioTimerLifecycle(window, check);
                     break;
+            }
+        }
+
+        /// <summary>Checks the debounced metadata after the detached window has re-entered the tree.</summary>
+        public static void Verify(string toolId, Window window, Action<bool, string> check)
+        {
+            if (toolId == "scenario_editor")
+                check(window.FindChildren("InfoScene", "", true, false).OfType<Label>().Any(label => label.Text == "timer_lifecycle_probe"),
+                    "scenario_editor: metadata refresh survives an edit outside the scene tree");
+        }
+
+        /// <summary>Edits an open buffer while detached; no file is saved, and refresh must wait for tree entry.</summary>
+        private static void ScenarioTimerLifecycle(Window window, Action<bool, string> check)
+        {
+            var file = ScenarioFileService.ScanScenarioFiles().SelectMany(mod => mod.Groups).SelectMany(group => group.Files).FirstOrDefault();
+            var tabs = Find<ScenarioEditTabs>(window);
+            check(file != null && tabs != null, "scenario_editor: scenario and text editor available for lifecycle check");
+            if (file == null || tabs == null)
+                return;
+
+            ((ScenarioEditorWindow)window).OpenScenario(file.Key);
+            var parent = window.GetParent();
+            parent.RemoveChild(window);
+            try
+            {
+                tabs.CodeEditor.Text = "scene: timer_lifecycle_probe\npriority: 10\n---\ntext \"Timer lifecycle probe\"\nend\n";
+                tabs.CodeEditor.EmitSignal(TextEdit.SignalName.TextChanged);
+            }
+            finally
+            {
+                parent.AddChild(window);
             }
         }
 
