@@ -5,6 +5,6 @@
     "src/*.cs"
   ],
   "depends": [
-    "my_novel_game>=1"
+    "my_novel_game>=0.1.0"
   ]
 }
