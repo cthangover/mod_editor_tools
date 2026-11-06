@@ -5,7 +5,7 @@
     "src/*.cs"
   ],
   "depends": [
-    "cthangover_game>=1",
+    "cthangover_game>=0.1.0",
     "village_pack>=1",
     "test_defaults_and_patches>=1",
     "rpg_editor>=1"
