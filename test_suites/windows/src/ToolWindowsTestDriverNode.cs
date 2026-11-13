@@ -12,7 +12,7 @@ namespace Cthangover.Tools.Tests.Windows
     /// <summary>
     /// Opens every registered tool window one by one through the same path the
     /// toolbar button uses (<see cref="ToolFactory"/> → <see cref="ToolWindow.ShowWindow"/>),
-    /// lets it lay out for a couple of ticks, checks that it entered the tree
+    /// waits for visible layout and two real frames (visual settles with screenshots), checks that it entered the tree
     /// visible and inside the game viewport, optionally saves a screenshot and
     /// closes it. A window that throws while constructing or laying out fails
     /// only its own check, the others still run. Ends with the runner contract
@@ -34,6 +34,10 @@ namespace Cthangover.Tools.Tests.Windows
         private int _settle;
         private double _elapsed;
         private bool _finished;
+        private bool _exercised;
+        private ulong _waitStarted;
+        private ulong _readyFrame;
+        private readonly double _tickSeconds;
         private Window _window;
         private readonly ToolWindowsErrorLogger _errors = new();
 
@@ -41,8 +45,9 @@ namespace Cthangover.Tools.Tests.Windows
         public ToolWindowsTestDriverNode(string shotsDir)
         {
             _shotsDir = shotsDir;
+            _tickSeconds = string.IsNullOrEmpty(shotsDir) ? 0.05 : TickSeconds;
             OS.AddLogger(_errors);
-            var timer = new Timer { WaitTime = TickSeconds, Autostart = true };
+            var timer = new Timer { WaitTime = _tickSeconds, Autostart = true };
             AddChild(timer);
             timer.Timeout += Tick;
         }
@@ -52,7 +57,7 @@ namespace Cthangover.Tools.Tests.Windows
             if (_finished)
                 return;
 
-            _elapsed += TickSeconds;
+            _elapsed += _tickSeconds;
             if (_elapsed >= TimeoutSeconds)
             {
                 Fail($"timeout ({TimeoutSeconds:0}s) at tool #{_toolIndex}");
@@ -80,6 +85,12 @@ namespace Cthangover.Tools.Tests.Windows
             if (_window == null)
                 return;
 
+            if (string.IsNullOrEmpty(_shotsDir))
+            {
+                AdvanceWhenReady();
+                return;
+            }
+
             if (--_settle == ExerciseTick)
             {
                 try
@@ -99,6 +110,53 @@ namespace Cthangover.Tools.Tests.Windows
             OpenNext();
         }
 
+        private void AdvanceWhenReady()
+        {
+            var id = _tools[_toolIndex].Id;
+            var ready = GodotObject.IsInstanceValid(_window) && _window.IsInsideTree()
+                && _window.Visible && _window.Size.X > 0 && _window.Size.Y > 0;
+            // This exercise intentionally schedules a metadata debounce while detached.
+            if (ready && _exercised && id == "scenario_editor")
+                ready = MetadataIsReady();
+            if (Time.GetTicksMsec() - _waitStarted > 10000)
+            {
+                Fail($"{id}: timed out waiting for {(_exercised ? "exercise completion" : "visible layout")}");
+                Finish();
+                return;
+            }
+            if (!ready)
+            {
+                _readyFrame = 0;
+                return;
+            }
+            if (_readyFrame == 0)
+                _readyFrame = Engine.GetProcessFrames();
+            if (Engine.GetProcessFrames() - _readyFrame < 2)
+                return;
+            if (!_exercised)
+            {
+                try { ToolWindowsExercises.Run(id, _window, Check); }
+                catch (System.Exception ex)
+                {
+                    Fail($"{id}: interaction threw {ex.GetType().Name}: {ex.Message}");
+                }
+                _exercised = true;
+                _waitStarted = Time.GetTicksMsec();
+                _readyFrame = 0;
+                return;
+            }
+            InspectAndClose();
+            OpenNext();
+        }
+
+        private bool MetadataIsReady()
+        {
+            foreach (var child in _window.FindChildren("InfoScene", "", true, false))
+                if (child is Label label && label.Text == "timer_lifecycle_probe")
+                    return true;
+            return false;
+        }
+
         private void OpenNext()
         {
             _toolIndex++;
@@ -114,6 +172,9 @@ namespace Cthangover.Tools.Tests.Windows
             {
                 _window = ToolWindow.ShowWindow(tool.CreateWindow());
                 _settle = SettleTicks;
+                _exercised = false;
+                _waitStarted = Time.GetTicksMsec();
+                _readyFrame = 0;
             }
             catch (System.Exception ex)
             {

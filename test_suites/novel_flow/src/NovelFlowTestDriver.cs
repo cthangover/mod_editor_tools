@@ -33,7 +33,10 @@ namespace Cthangover.Tools.Tests.NovelFlow
     /// </summary>
     public partial class NovelFlowTestDriver : Node
     {
-        private const float TickSeconds = 0.3f;
+        private int readinessToken = int.MinValue;
+        private ulong readinessStarted;
+        private ulong readinessFrame;
+        private const float TickSeconds = 0.05f;
         private const float TimeoutSeconds = 150f;
         private const string Mod = "my_novel_game";
         private const string Town = "my_novel_town";
@@ -97,8 +100,26 @@ namespace Cthangover.Tools.Tests.NovelFlow
             }
         }
 
+        // Deferred UI/scene work must finish before the original assertions run.
+        private bool WaitForReadyFrames(int token, bool ready, double timeoutSeconds = 30)
+        {
+            var now = global::Godot.Time.GetTicksMsec();
+            if (readinessToken != token)
+            {
+                readinessToken = token;
+                readinessStarted = now;
+                readinessFrame = 0;
+            }
+            if (now - readinessStarted > timeoutSeconds * 1000)
+                throw new global::System.TimeoutException($"readiness at step {token}: scene/UI did not become ready");
+            if (!ready) { readinessFrame = 0; return false; }
+            if (readinessFrame == 0) readinessFrame = global::Godot.Engine.GetProcessFrames();
+            return global::Godot.Engine.GetProcessFrames() - readinessFrame >= 2;
+        }
+
         private void RunStep()
         {
+            if (!WaitForReadyFrames(step, Boot.IsReady && Scenes != null && !GodotSceneService.IsTransitioning && (step < 2 || sceneEditor != null && sceneEditor.IsInsideTree()), 30)) return;
             switch (step)
             {
                 case 0:
@@ -182,7 +203,7 @@ namespace Cthangover.Tools.Tests.NovelFlow
                     Next();
                     return;
                 case 8:
-                    if (++wait < 3 || GodotSceneService.IsTransitioning)
+                    if (GodotSceneService.IsTransitioning || Scenes.CurrentSceneName != Town)
                         return;
                     foreach (var window in GetTree().Root.GetChildren().OfType<Window>().ToList())
                         window.EmitSignal(Window.SignalName.CloseRequested);
