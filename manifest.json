@@ -1,19 +1,19 @@
 {
   "id": "editor_tools",
   "name": "Editor Tools",
-  "version": "1.1.0",
+  "version": "0.1.0",
   "author": "ct",
   "description": "Compatibility toolset: installs the individual scene, scenario, map, interactive, light, Godot scene and catalog tools.",
   "category": "tools, editor",
   "sources": [],
   "depends": [
-    "scenario_editor>=1",
-    "scene_editor>=1",
-    "scene_builder>=1",
-    "map_editor>=1",
-    "interactive_editor>=1",
-    "light_editor>=1",
-    "catalog_export>=1"
+    "scenario_editor>=0.1.0",
+    "scene_editor>=0.1.0",
+    "scene_builder>=0.1.0",
+    "map_editor>=0.1.0",
+    "interactive_editor>=0.1.0",
+    "light_editor>=0.1.0",
+    "catalog_export>=0.1.0"
   ],
   "test_suites": [
     {
