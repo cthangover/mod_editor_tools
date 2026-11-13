@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "author": "ct",
   "description": "Compatibility toolset: installs the individual scene, scenario, map, interactive, light, Godot scene and catalog tools.",
-  "category": "tools, editor",
+  "categories": ["tools", "editor"],
   "sources": [],
   "depends": [
     "scenario_editor>=0.1.0",
