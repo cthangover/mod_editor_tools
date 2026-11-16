@@ -130,8 +130,8 @@ namespace Cthangover.Tools.Tests.Windows
                 return;
             }
             if (_readyFrame == 0)
-                _readyFrame = Engine.GetProcessFrames();
-            if (Engine.GetProcessFrames() - _readyFrame < 2)
+                _readyFrame = Godot.Engine.GetProcessFrames();
+            if (Godot.Engine.GetProcessFrames() - _readyFrame < 2)
                 return;
             if (!_exercised)
             {
