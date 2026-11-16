@@ -119,7 +119,13 @@ namespace Cthangover.Tools.Tests.NovelFlow
 
         private void RunStep()
         {
-            if (!WaitForReadyFrames(step, Boot.IsReady && Scenes != null && !GodotSceneService.IsTransitioning && (step < 2 || sceneEditor != null && sceneEditor.IsInsideTree()), 30)) return;
+            var editorReady = step < 2 || step > 8
+                || GodotObject.IsInstanceValid(sceneEditor) && sceneEditor.IsInsideTree();
+            if (!WaitForReadyFrames(step,
+                Boot.IsReady && Scenes != null && !GodotSceneService.IsTransitioning && editorReady, 30))
+            {
+                return;
+            }
             switch (step)
             {
                 case 0:
