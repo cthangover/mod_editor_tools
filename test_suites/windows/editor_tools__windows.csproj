@@ -98,6 +98,9 @@
     <Reference Include="../../../cooking/dll/**/*.dll" Exclude="$(CthangoverSourceBinaryExcludes)">
       <Private>false</Private>
     </Reference>
+    <Reference Include="../../../crafting/dll/**/*.dll" Exclude="$(CthangoverSourceBinaryExcludes)">
+      <Private>false</Private>
+    </Reference>
     <Reference Include="../../../cthangover_game/dll/**/*.dll" Exclude="$(CthangoverSourceBinaryExcludes)">
       <Private>false</Private>
     </Reference>
